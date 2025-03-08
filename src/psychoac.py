@@ -8,8 +8,7 @@ psychoac.py -- masking models implementation
 
 import numpy as np
 import scipy
-from window import HanningWindow, KBDWindow, SineWindow
-from quantize import ScaleFactor
+from window import HanningWindow
 
 
 def intensity_from_DFT(X, gain_window=3 / 8):
