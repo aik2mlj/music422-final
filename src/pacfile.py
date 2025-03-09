@@ -155,8 +155,9 @@ class PACFile(AudioFile):
         myParams.overlapAndAdd = overlapAndAdd
 
         # new ones for M/S and neural network
-        myParams.useML = False
-        myParams.nPsiBits = 4
+        (useML, nPsiBits) = unpack("<HH", self.fp.read(calcsize("<HH")))
+        myParams.useML = useML
+        myParams.nPsiBits = nPsiBits
 
         return myParams
 
@@ -169,8 +170,11 @@ class PACFile(AudioFile):
         # TODO: change reading strategy for M/S coding
         # loop over channels (whose coded data are stored separately) and read in each data block
         data = []
+        scaleFactor_MS = []
+        bitAlloc_MS = []
+        mantissa_MS = []
+        overallScaleFactor_MS = []
         for iCh in range(codingParams.nChannels):
-            data.append(np.array([], dtype=np.float64))  # add location for this channel's data
             # read in string containing the number of bytes of data for this channel (but check if at end of file!)
             s = self.fp.read(calcsize("<L"))  # will be empty if at end of file
             if not s:
@@ -220,15 +224,33 @@ class PACFile(AudioFile):
                             codingParams.sfBands.upperLine[iBand] + 1
                         )
                     ] = m
+            scaleFactor_MS.append(scaleFactor)
+            bitAlloc_MS.append(bitAlloc)
+            mantissa_MS.append(mantissa)
+            overallScaleFactor_MS.append(overallScaleFactor)
             # done unpacking data (end loop over scale factor bands)
 
-            # CUSTOM DATA:
-            # < now can unpack any custom data passed in the nBytes of data >
+        # read psi_array for M/S rotation
+        nBits = codingParams.nPsiBits * codingParams.sfBands.nBands
+        if nBits % BYTESIZE == 0:
+            nBytes = nBits // BYTESIZE
+        else:
+            nBytes = nBits // BYTESIZE + 1
+        pb = PackedBits()
+        pb.SetPackedData(self.fp.read(nBytes))
+        psi_array = []
+        for iBand in range(codingParams.sfBands.nBands):
+            psi_array.append(pb.ReadBits(codingParams.nPsiBits))
 
+        # decode the time-domain data for this block
+        decodedData_LR = self.Decode(
+            scaleFactor_MS, bitAlloc_MS, mantissa_MS, overallScaleFactor_MS, psi_array, codingParams
+        )
+        # overlap-and-add the decoded data for each channel
+        for iCh in range(codingParams.nChannels):
+            data.append(np.array([], dtype=np.float64))  # add location for this channel's data
+            decodedData = decodedData_LR[iCh]
             # (DECODE HERE) decode the unpacked data for this channel, overlap-and-add first half, and append it to the data array (saving other half for next overlap-and-add)
-            decodedData = self.Decode(
-                scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams
-            )
             data[iCh] = np.concatenate(
                 (
                     data[iCh],
@@ -281,6 +303,10 @@ class PACFile(AudioFile):
         codingParams.sfBands = sfBands
         self.fp.write(pack("<L", sfBands.nBands))
         self.fp.write(pack("<" + str(sfBands.nBands) + "H", *(sfBands.nLines.tolist())))
+
+        # write M/S coding params
+        self.fp.write(pack("<HH", codingParams.useML, codingParams.nPsiBits))
+
         # start w/o all zeroes as prior block of unencoded data for other half of MDCT block
         priorBlock = []
         for iCh in range(codingParams.nChannels):
@@ -301,7 +327,7 @@ class PACFile(AudioFile):
         codingParams.priorBlock = data  # current pass's data is next pass's prior block data
 
         # (ENCODE HERE) Encode the full block of multi=channel data
-        (scaleFactor, bitAlloc, mantissa, overallScaleFactor) = self.Encode(
+        (scaleFactor, bitAlloc, mantissa, overallScaleFactor, psi_array) = self.Encode(
             fullBlockData, codingParams
         )  # returns a tuple with all the block-specific info not in the file header
 
@@ -367,6 +393,19 @@ class PACFile(AudioFile):
             # finally, write the data in this channel's PackedBits object to the output file
             self.fp.write(pb.GetPackedData())
         # end loop over channels, done writing coded data for all channels
+
+        # write psi_array for M/S rotation
+        nBits = codingParams.nPsiBits * codingParams.sfBands.nBands
+        if nBits % BYTESIZE == 0:
+            nBytes = nBits // BYTESIZE
+        else:
+            nBytes = nBits // BYTESIZE + 1
+        pb = PackedBits()
+        pb.Size(nBytes)
+        for iBand in range(codingParams.sfBands.nBands):
+            pb.WriteBits(psi_array[iBand], codingParams.nPsiBits)
+        self.fp.write(pb.GetPackedData())
+
         return
 
     def Close(self, codingParams):
@@ -393,13 +432,15 @@ class PACFile(AudioFile):
         # Passes encoding logic to the Encode function defined in the codec module
         return codec.Encode(data, codingParams)
 
-    def Decode(self, scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams):
+    def Decode(self, scaleFactor, bitAlloc, mantissa, overallScaleFactor, psi_array, codingParams):
         """
         Decodes a single audio channel of data based on the values of its scale factors,
         bit allocations, quantized mantissas, and overall scale factor.
         """
         # Passes decoding logic to the Decode function defined in the codec module
-        return codec.Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams)
+        return codec.Decode(
+            scaleFactor, bitAlloc, mantissa, overallScaleFactor, psi_array, codingParams
+        )
 
 
 # -----------------------------------------------------------------------------
