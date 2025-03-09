@@ -2,6 +2,126 @@
 Calculate the rotation matrix for M/S split.
 """
 
+import numpy as np
+from quantize import vQuantizeUniform
 
-def splitMS(mdctLines_L, mdctLines_R, sfBands):
-    pass
+
+def calc_rotation_angles(mdctLines_L, mdctLines_R, sfBands):
+    """
+    Calculate the rotation angles for each frequency subband for the given MDCT lines.
+    """
+    # for each pair of subbands from mdctLines_L and mdctLines_R, calculate the covariance matrix
+    # and store it in a list
+    # cov_matrices = []
+    rotation_angles = []
+    for iBand in range(sfBands.nBands):
+        lowLine = sfBands.lowerLine[iBand]
+        highLine = sfBands.upperLine[iBand] + 1
+        nLines = sfBands.nLines[iBand]
+        # get the MDCT lines for the current subband
+        mdctLines_L_subband = mdctLines_L[lowLine:highLine]
+        mdctLines_R_subband = mdctLines_R[lowLine:highLine]
+        # calculate the covariance matrix
+        cov_matrix = np.cov(np.vstack((mdctLines_L_subband, mdctLines_R_subband)))
+        # cov_matrices.append(cov_matrix)
+        # calculate the rotation angle, use arctan2 to avoid division by zero
+        rotation_angle = 0.5 * np.arctan2(
+            cov_matrix[0, 1] + cov_matrix[1, 0], cov_matrix[0, 0] - cov_matrix[1, 1]
+        )
+        rotation_angles.append(rotation_angle)
+
+    return rotation_angles
+
+
+def quantize_rotation(rotation_angles, nPhiBits=4):
+    """
+    Uniformly quantize the rotation angles using nPhiBits-bit precision.
+    """
+    # normalize the rotation angles to the range [-pi/2, pi/2]
+    rotation_angles = rotation_angles / (np.pi / 2)
+
+    # quantize the rotation angles
+    return vQuantizeUniform(rotation_angles, nPhiBits)
+
+
+def apply_rotation(mdctLines_L, mdctLines_R, quantized_rotation_angles, sfBands):
+    """
+    Apply the rotation to the MDCT lines.
+    Return mdctLines_M and mdctLines_S.
+    """
+    phi_array = np.pi / 2 * quantized_rotation_angles
+    mdctLines_M = np.zeros_like(mdctLines_L)
+    mdctLines_S = np.zeros_like(mdctLines_L)
+
+    # apply rotation to each subband
+    for iBand in range(len(phi_array)):
+        rotation_angle = phi_array[iBand]
+        lowLine = sfBands.lowerLine[iBand]
+        highLine = sfBands.upperLine[iBand] + 1
+        nLines = sfBands.nLines[iBand]
+        mdctLines_L_subband = mdctLines_L[lowLine:highLine]
+        mdctLines_R_subband = mdctLines_R[lowLine:highLine]
+
+        # calculate rotation matrix elements
+        cos_phi = np.cos(rotation_angle)
+        sin_phi = np.sin(rotation_angle)
+
+        # apply rotation
+        mdctLines_M_subband = cos_phi * mdctLines_L_subband + sin_phi * mdctLines_R_subband
+        mdctLines_S_subband = -sin_phi * mdctLines_L_subband + cos_phi * mdctLines_R_subband
+
+        # update the MDCT lines
+        mdctLines_M[lowLine:highLine] = mdctLines_M_subband
+        mdctLines_S[lowLine:highLine] = mdctLines_S_subband
+
+    return mdctLines_M, mdctLines_S
+
+
+def apply_inverse_rotation(mdctLines_M, mdctLines_S, quantized_rotation_angles, sfBands):
+    """
+    Apply the inverse rotation to the MDCT lines.
+    Return mdctLines_L and mdctLines_R.
+    """
+    phi_array = np.pi / 2 * quantized_rotation_angles
+    mdctLines_L = np.zeros_like(mdctLines_M)
+    mdctLines_R = np.zeros_like(mdctLines_M)
+
+    # apply inverse rotation to each subband
+    for iBand in range(len(phi_array)):
+        rotation_angle = phi_array[iBand]
+        lowLine = sfBands.lowerLine[iBand]
+        highLine = sfBands.upperLine[iBand] + 1
+        nLines = sfBands.nLines[iBand]
+        mdctLines_M_subband = mdctLines_M[lowLine:highLine]
+        mdctLines_S_subband = mdctLines_S[lowLine:highLine]
+
+        # calculate inverse rotation matrix elements
+        cos_phi = np.cos(rotation_angle)
+        sin_phi = np.sin(rotation_angle)
+
+        # apply inverse rotation
+        mdctLines_L_subband = cos_phi * mdctLines_M_subband - sin_phi * mdctLines_S_subband
+        mdctLines_R_subband = sin_phi * mdctLines_M_subband + cos_phi * mdctLines_S_subband
+
+        # update the MDCT lines
+        mdctLines_L[lowLine:highLine] = mdctLines_L_subband
+        mdctLines_R[lowLine:highLine] = mdctLines_R_subband
+
+    return mdctLines_L, mdctLines_R
+
+
+def rotational_ms(mdctLines_L, mdctLines_R, sfBands):
+    """
+    Split the MDCT lines into M and S components using rotational M/S.
+    """
+    psi_array = quantize_rotation(calc_rotation_angles(mdctLines_L, mdctLines_R, sfBands))
+    mdctLines_M, mdctLines_S = apply_rotation(mdctLines_L, mdctLines_R, psi_array, sfBands)
+    return psi_array, mdctLines_M, mdctLines_S
+
+
+def inverse_rotational_ms(mdctLines_M, mdctLines_S, psi_array, sfBands):
+    """
+    Restore the L and R components from the M and S components using inverse rotational M/S.
+    """
+    mdctLines_L, mdctLines_R = apply_inverse_rotation(mdctLines_M, mdctLines_S, psi_array, sfBands)
+    return mdctLines_L, mdctLines_R
