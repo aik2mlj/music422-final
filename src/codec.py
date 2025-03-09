@@ -19,36 +19,45 @@ from psychoac import CalcSMRs, CalcSMRs_MS  # calculates SMRs for each scale fac
 from bitalloc import BitAlloc  # allocates bits to scale factor bands given SMRs
 
 
-def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, psi_array, codingParams):
-    """Reconstitutes a single-channel block of encoded data into a block of
+def Decode(
+    scaleFactor_MS, bitAlloc_MS, mantissa_MS, overallScaleFactor_MS, psi_array, codingParams
+):
+    """Reconstitutes a stereo-channel block of encoded data into a block of
     signed-fraction data based on the parameters in a PACFile object"""
 
-    rescaleLevel = 1.0 * (1 << overallScaleFactor)
+    mdctLines_MS = []
     halfN = codingParams.nMDCTLines
-    N = 2 * halfN
-    # vectorizing the Dequantize function call
-    #    vDequantize = np.vectorize(Dequantize)
+    for scaleFactor, bitAlloc, mantissa, overallScaleFactor in zip(
+        scaleFactor_MS, bitAlloc_MS, mantissa_MS, overallScaleFactor_MS
+    ):
+        rescaleLevel = 1.0 * (1 << overallScaleFactor)
 
-    # reconstitute the first halfN MDCT lines of this channel from the stored data
-    mdctLine = np.zeros(halfN, dtype=np.float64)
-    iMant = 0
-    for iBand in range(codingParams.sfBands.nBands):
-        nLines = codingParams.sfBands.nLines[iBand]
-        if bitAlloc[iBand]:
-            mdctLine[iMant : (iMant + nLines)] = vDequantize(
-                scaleFactor[iBand],
-                mantissa[iMant : (iMant + nLines)],
-                codingParams.nScaleBits,
-                bitAlloc[iBand],
-            )
-        iMant += nLines
-    mdctLine /= rescaleLevel  # put overall gain back to original level
+        # reconstitute the first halfN MDCT lines of this channel from the stored data
+        mdctLine = np.zeros(halfN, dtype=np.float64)
+        iMant = 0
+        for iBand in range(codingParams.sfBands.nBands):
+            nLines = codingParams.sfBands.nLines[iBand]
+            if bitAlloc[iBand]:
+                mdctLine[iMant : (iMant + nLines)] = vDequantize(
+                    scaleFactor[iBand],
+                    mantissa[iMant : (iMant + nLines)],
+                    codingParams.nScaleBits,
+                    bitAlloc[iBand],
+                )
+            iMant += nLines
+        mdctLine /= rescaleLevel  # put overall gain back to original level
+        mdctLines_MS.append(mdctLine)
 
-    # IMDCT and window the data for this channel
-    data = SineWindow(IMDCT(mdctLine, halfN, halfN))  # takes in halfN MDCT coeffs
+    # rotate back to L and R channels
+    mdctLines_L, mdctLines_R = inverse_rotational_ms(
+        mdctLines_MS[0], mdctLines_MS[1], psi_array, codingParams.sfBands
+    )
 
-    # end loop over channels, return reconstituted time samples (pre-overlap-and-add)
-    return data
+    # IMDCT and window the data
+    data_L = SineWindow(IMDCT(mdctLines_L, halfN, halfN))
+    data_R = SineWindow(IMDCT(mdctLines_R, halfN, halfN))
+
+    return (data_L, data_R)
 
 
 def Encode(data, codingParams):
