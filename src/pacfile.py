@@ -156,7 +156,7 @@ class PACFile(AudioFile):
 
         # new ones for M/S and neural network
         myParams.useML = False
-        myParams.nPhiBits = 4
+        myParams.nPsiBits = 4
 
         return myParams
 
