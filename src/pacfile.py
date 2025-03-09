@@ -153,6 +153,11 @@ class PACFile(AudioFile):
         for iCh in range(nChannels):
             overlapAndAdd.append(np.zeros(nMDCTLines, dtype=np.float64))
         myParams.overlapAndAdd = overlapAndAdd
+
+        # new ones for M/S and neural network
+        myParams.useML = False
+        myParams.nPhiBits = 4
+
         return myParams
 
     def ReadDataBlock(self, codingParams):
@@ -161,6 +166,7 @@ class PACFile(AudioFile):
         executed OpenForReading() and returns those samples as reconstituted
         signed-fraction data
         """
+        # TODO: change reading strategy for M/S coding
         # loop over channels (whose coded data are stored separately) and read in each data block
         data = []
         for iCh in range(codingParams.nChannels):
@@ -287,6 +293,7 @@ class PACFile(AudioFile):
         Writes a block of signed-fraction data to a PACFile object that has
         already executed OpenForWriting()"""
 
+        # TODO: change writing strategy for M/S coding
         # combine this block of multi-channel data w/ the prior block's to prepare for MDCTs twice as long
         fullBlockData = []
         for iCh in range(codingParams.nChannels):

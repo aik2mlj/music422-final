@@ -9,6 +9,7 @@ psychoac.py -- masking models implementation
 import numpy as np
 import scipy
 from window import HanningWindow
+from rotation import apply_rotation
 
 
 def intensity_from_DFT(X, gain_window=3 / 8):
@@ -265,6 +266,147 @@ def CalcSMRs(data, MDCTdata, MDCTscale, sampleRate, sfBands):
         SMR_max = np.max(SMR_all[lower_l : upper_l + 1])
         SMRs.append(SMR_max)
     return np.array(SMRs)
+
+
+def identifyMaskers_from_spectrum(spectrum, N, sampleRate, sfBands):
+    freqs = np.arange(N // 2) / N * sampleRate
+    # get intensity & SPL
+    intensity = intensity_from_DFT(spectrum)
+
+    # get peak indices where potentially tonal maskers locate
+    peak_indices = scipy.signal.argrelextrema(intensity, np.greater, order=1)[0]
+    # peak_indices = [i for i in peak_indices if intensity[i] > np.mean(intensity)]
+
+    # get tonal maskers
+    tonal_maskers = []
+    for p in peak_indices:
+        # aggregate the intensity values across the peak
+        intensity_agg = intensity[p - 1] + intensity[p] + intensity[p + 1]
+        # center of mass interpolation for peak frequency estimation
+        freq_peak = (
+            sampleRate
+            / N
+            * ((p - 1) * intensity[p - 1] + p * intensity[p] + (p + 1) * intensity[p + 1])
+            / intensity_agg
+        )
+        tonal_maskers.append((freq_peak, intensity_agg))
+
+    # get noise maskers: within each critical band, sum up the intensity excluding the tonal ones.
+    noise_maskers = []
+    for lower_l, upper_l in zip(sfBands.lowerLine, sfBands.upperLine):
+        noise_indices = np.arange(lower_l, upper_l + 1)
+        # remove tonal indices from the noise indices
+        for peak in peak_indices:
+            noise_indices = noise_indices[noise_indices != peak]
+        if len(noise_indices) == 0:
+            continue
+        # sum up the intensity
+        noise_intensity = np.sum(intensity[noise_indices])
+        # the center frequency is the geometric mean of this critical band
+        noise_freq = np.exp(np.mean(np.log(np.maximum(1, freqs[noise_indices]))))
+        noise_maskers.append((noise_freq, noise_intensity))
+
+    return tonal_maskers, noise_maskers
+
+
+def identifyMaskers_MS(data_LR, sampleRate, sfBands, psi_array):
+    """
+    Identify the maskers from given time-domain samples data
+    return: (tonal_maskers, noise_maskers), each a `np.array` of (frequency, intensity)
+    """
+    N = len(data_LR[0])
+
+    spectrum_LR = []
+    for iCh in range(2):
+        # Hanning window first
+        data_windowed = HanningWindow(data_LR[iCh])
+        # FFT
+        spectrum_LR.append(scipy.fft.rfft(data_windowed)[:-1])
+
+    # rotation: to MS
+    spectrum_M, spectrum_S = apply_rotation(spectrum_LR[0], spectrum_LR[1], psi_array, sfBands)
+
+    tonal_maskers_M, noise_maskers_M = identifyMaskers_from_spectrum(
+        spectrum_M, N, sampleRate, sfBands
+    )
+    tonal_maskers_S, noise_maskers_S = identifyMaskers_from_spectrum(
+        spectrum_S, N, sampleRate, sfBands
+    )
+    return ([tonal_maskers_M, tonal_maskers_S], [noise_maskers_M, noise_maskers_S])
+
+
+def getMaskedThreshold_MS(data_LR, sampleRate, sfBands, psi_array):
+    """
+    Return Masked Threshold evaluated at MDCT lines.
+
+    Used by CalcSMR, but can also be called from outside this module, which may
+    be helpful when debugging the bit allocation code.
+    """
+    N = len(data_LR[0])
+    # indentify the maskers
+    tonal_maskers_MS, noise_maskers_MS = identifyMaskers_MS(data_LR, sampleRate, sfBands, psi_array)
+    freqs = np.arange(N // 2) / N * sampleRate
+    # combine all the masking curves and threshold in quiet to get the masked threshold
+    quiet_thresh = Thresh(freqs)
+    masked_thresh_MS = []
+    for iCh in range(2):
+        masked_thresh = quiet_thresh
+        for tm_f, tm_intensity in tonal_maskers_MS[iCh]:
+            tm_spl = SPL(tm_intensity)
+            masker = Masker(tm_f, tm_spl, isTonal=True)
+            masker_intensity = masker.vIntensityAtFreq(freqs)
+            masking_curve = SPL(masker_intensity)
+            masked_thresh = np.maximum(masked_thresh, masking_curve)  # alpha=inf
+        # for debug purpose, do not use noise maskers
+        # for ns_f, ns_intensity in noise_maskers_MS[iCh]:
+        #     ns_spl = SPL(ns_intensity)
+        #     masker = Masker(ns_f, ns_spl, isTonal=False)
+        #     masker_intensity = masker.vIntensityAtFreq(freqs)
+        #     masking_curve = SPL(masker_intensity)
+        #     masked_thresh = np.maximum(masked_thresh, masking_curve)  # alpha=inf
+        masked_thresh_MS.append(masked_thresh)
+    return masked_thresh_MS
+
+
+def CalcSMRs_MS(data_LR, MDCTdata_MS, MDCTscale_MS, sampleRate, sfBands, psi_array):
+    """
+    Set SMR for each critical band in sfBands.
+
+    Arguments:
+                data:       [2] of an array of N time domain samples
+                MDCTdata:   [2] of an array of N/2 MDCT frequency coefficients for the time domain samples
+                            in data; note that the MDCT coefficients have been scaled up by a factor
+                            of 2^MDCTscale
+                MDCTscale:  [2] corresponding to an overall scale factor 2^MDCTscale for the set of MDCT
+                            frequency coefficients
+                sampleRate: is the sampling rate of the time domain samples
+                sfBands:    points to information about which MDCT frequency lines
+                            are in which scale factor band
+
+    Returns:
+                SMR[sfBands.nBands] is the maximum signal-to-mask ratio in each
+                                    scale factor band
+
+    Logic:
+                Performs an FFT of data[N] and identifies tonal and noise maskers.
+                Combines their relative masking curves and the hearing threshold
+                to calculate the overall masked threshold at the MDCT frequency locations.
+                                Then determines the maximum signal-to-mask ratio within
+                each critical band and returns that result in the SMR[] array.
+    """
+    masked_thresh_MS = getMaskedThreshold_MS(data_LR, sampleRate, sfBands, psi_array)
+    SMRs_MS = []
+    for iCh in range(2):
+        MDCTdata_origin = MDCTdata_MS[iCh] / (2 ** MDCTscale_MS[iCh])
+        MDCTspl = SPL(intensity_from_MDCT(MDCTdata_origin))
+        SMR_all = MDCTspl - masked_thresh_MS[iCh]
+        # record the maximum SMR in each sfBand
+        SMRs = []
+        for lower_l, upper_l in zip(sfBands.lowerLine, sfBands.upperLine):
+            SMR_max = np.max(SMR_all[lower_l : upper_l + 1])
+            SMRs.append(SMR_max)
+        SMRs_MS.append(np.array(SMRs))
+    return SMRs_MS
 
 
 # -----------------------------------------------------------------------------

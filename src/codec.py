@@ -12,9 +12,10 @@ import numpy as np  # used for arrays
 from window import SineWindow  # current window used for MDCT -- implement KB-derived?
 from mdct import MDCT, IMDCT  # fast MDCT implementation (uses numpy FFT)
 from quantize import *  # using vectorized versions (to use normal versions, uncomment lines 18,67 below defining vMantissa and vDequantize)
+from rotation import rotational_ms, inverse_rotational_ms, apply_rotation
 
 # used only by Encode
-from psychoac import CalcSMRs  # calculates SMRs for each scale factor band
+from psychoac import CalcSMRs, CalcSMRs_MS  # calculates SMRs for each scale factor band
 from bitalloc import BitAlloc  # allocates bits to scale factor bands given SMRs
 
 
@@ -51,11 +52,38 @@ def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams):
 
 
 def Encode(data, codingParams):
-    """Encodes a multi-channel block of signed-fraction data based on the parameters in a PACFile object"""
+    """Encodes a stereo block of signed-fraction data based on the parameters in a PACFile object"""
     scaleFactor = []
     bitAlloc = []
     mantissa = []
     overallScaleFactor = []
+
+    # We now assume the binaural scenario, i.e., two channels
+    assert codingParams.nChannels == 2
+
+    # prepare various constants
+    halfN = codingParams.nMDCTLines
+    N = 2 * halfN
+    nScaleBits = codingParams.nScaleBits
+    maxMantBits = 1 << codingParams.nMantSizeBits
+    if maxMantBits > 16:
+        maxMantBits = 16  # to make sure we don't ever overflow mantissa holders
+    sfBands = codingParams.sfBands
+
+    # get MDCT lines
+    mdctTimeSamples_L = SineWindow(data[0])
+    mdctLines_L = MDCT(mdctTimeSamples_L, halfN, halfN)[:halfN]
+    mdctTimeSamples_R = SineWindow(data[1])
+    mdctLines_R = MDCT(mdctTimeSamples_R, halfN, halfN)[:halfN]
+
+    # calculate rotaional M/S
+    psi_array, mdctLines_M, mdctLines_S = rotational_ms(mdctLines_L, mdctLines_R, sfBands)
+
+    s_M, b_M, m_M, o_M = EncodeMS(data, psi_array, (mdctLines_M, mdctLines_S), codingParams)
+    # TODO: return results
+
+    if codingParams.useML:
+        (s, b, m, o) = EncodeSingleChannel(data[iCh], codingParams)
 
     # loop over channels and separately encode each one
     for iCh in range(codingParams.nChannels):
@@ -66,6 +94,81 @@ def Encode(data, codingParams):
         overallScaleFactor.append(o)
     # return results bundled over channels
     return (scaleFactor, bitAlloc, mantissa, overallScaleFactor)
+
+
+def EncodeMS(data, psi_array, mdctLines_MS, codingParams):
+    """Encodes a single-channel block of MDCT lines based on the parameters in a PACFile object"""
+
+    # prepare various constants
+    halfN = codingParams.nMDCTLines
+    N = 2 * halfN
+    nScaleBits = codingParams.nScaleBits
+    maxMantBits = 1 << codingParams.nMantSizeBits
+    if maxMantBits > 16:
+        maxMantBits = 16  # to make sure we don't ever overflow mantissa holders
+    sfBands = codingParams.sfBands
+
+    # compute target mantissa bit budget for this block of halfN MDCT mantissas
+    # TODO: change bitBudget to take M/S into consideration
+    bitBudget = codingParams.targetBitsPerSample * halfN  # this is overall target bit rate
+    bitBudget -= nScaleBits * (
+        sfBands.nBands + 1
+    )  # less scale factor bits (including overall scale factor)
+    bitBudget -= codingParams.nMantSizeBits * sfBands.nBands  # less mantissa bit allocation bits
+
+    # compute overall scale factor for MID block and boost mdctLines using it
+    overallScale_MS = []
+    for iCh in range(2):
+        maxLine = np.max(np.abs(mdctLines_MS[iCh]))
+        overallScale = ScaleFactor(maxLine, nScaleBits)  # leading zeroes don't depend on nMantBits
+        mdctLines_MS[iCh] *= 1 << overallScale
+        overallScale_MS.append(overallScale)
+
+    # =====================================================
+    # VAE: if side channel
+    # normal: if main channel
+
+    # compute the mantissa bit allocations
+    # compute SMRs (take psi_array into account)
+    # get the rotated timeSamples first
+
+    SMRs_MS = CalcSMRs_MS(
+        data, mdctLines_MS, overallScale_MS, codingParams.sampleRate, sfBands, psi_array
+    )
+
+    # TODO: bit allocation according to SMRs_MS
+
+    # perform bit allocation using SMR results
+    bitAlloc = BitAlloc(bitBudget, maxMantBits, sfBands.nBands, sfBands.nLines, SMRs)
+
+    # given the bit allocations, quantize the mdct lines in each band
+    scaleFactor = np.empty(sfBands.nBands, dtype=np.int32)
+    nMant = halfN
+    for iBand in range(sfBands.nBands):
+        if not bitAlloc[iBand]:
+            nMant -= sfBands.nLines[iBand]  # account for mantissas not being transmitted
+    mantissa = np.empty(nMant, dtype=np.int32)
+    iMant = 0
+    for iBand in range(sfBands.nBands):
+        lowLine = sfBands.lowerLine[iBand]
+        highLine = (
+            sfBands.upperLine[iBand] + 1
+        )  # extra value is because slices don't include last value
+        nLines = sfBands.nLines[iBand]
+        scaleLine = np.max(np.abs(mdctLines[lowLine:highLine]))
+        scaleFactor[iBand] = ScaleFactor(scaleLine, nScaleBits, bitAlloc[iBand])
+        if bitAlloc[iBand]:
+            mantissa[iMant : iMant + nLines] = vMantissa(
+                mdctLines[lowLine:highLine],
+                scaleFactor[iBand],
+                nScaleBits,
+                bitAlloc[iBand],
+            )
+            iMant += nLines
+    # end of loop over scale factor bands
+
+    # return results
+    return (scaleFactor, bitAlloc, mantissa, overallScale)
 
 
 def EncodeSingleChannel(data, codingParams):
