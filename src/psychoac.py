@@ -59,13 +59,33 @@ def Bark(f):
     return 13 * np.arctan(0.76 * f_khz) + 3.5 * np.arctan(np.pow(f_khz / 7.5, 2))
 
 
+def BMLD_correction(freq):
+    """
+    Returns the BMLD correction (in dB) for a given frequency. Used for side channel maskers.
+    At low frequencies (<250 Hz), the binaural masking level difference can be up to ~15 dB.
+    For frequencies above 1500 Hz and below 4khz, the effect is stabilised (2.5 dB correction).
+    For intermediate frequencies, we apply a linear interpolation.
+    """
+    if freq < 0:
+        raise ValueError("Frequency must be positive.")
+    if freq <= 250:
+        return 15.0
+    elif freq <= 1500:
+        # Linearly interpolate between 15 dB and 2.5 dB
+        return 15.0 - (15.0 - 2.5) * (freq - 250) / (1500 - 250)
+    elif freq <= 4000:
+        return 2.5
+    else:
+        return 0.0
+
+
 class Masker:
     """
     a Masker whose masking curve drops linearly in Bark beyond 0.5 Bark from the
     masker frequency
     """
 
-    def __init__(self, f, SPL, isTonal=True):
+    def __init__(self, f, SPL, isTonal=True, isSide=False):
         """
         initialized with the frequency and SPL of a masker and whether or not
         it is Tonal
@@ -75,6 +95,10 @@ class Masker:
         self.spl = SPL
         self.isTonal = isTonal
         self.delta = 16 if isTonal else 6
+
+        # if the masker is a side tone, apply BMLD correction
+        if isSide:
+            self.delta += BMLD_correction(f)
 
     def IntensityAtFreq(self, freq):
         """The intensity at frequency freq"""
@@ -275,7 +299,7 @@ def identifyMaskers_from_spectrum(spectrum, N, sampleRate, sfBands):
 def identifyMaskers_MS(data_LR, sampleRate, sfBands, psi_array):
     """
     Identify the maskers from given time-domain samples data
-    return: (tonal_maskers, noise_maskers), each a `np.array` of (frequency, intensity)
+    return: (tonal_maskers_MS, noise_maskers_MS), each a list of `np.array` of (frequency, intensity)
     """
     N = len(data_LR[0])
 
@@ -302,7 +326,7 @@ def getMaskedThreshold_MS(data_LR, sampleRate, sfBands, psi_array):
     """
     Return Masked Threshold evaluated at MDCT lines.
 
-    Used by CalcSMR, but can also be called from outside this module, which may
+    Used by CalcSMR_MS, but can also be called from outside this module, which may
     be helpful when debugging the bit allocation code.
     """
     N = len(data_LR[0])
@@ -316,13 +340,17 @@ def getMaskedThreshold_MS(data_LR, sampleRate, sfBands, psi_array):
         masked_thresh = quiet_thresh
         for tm_f, tm_intensity in tonal_maskers_MS[iCh]:
             tm_spl = SPL(tm_intensity)
-            masker = Masker(tm_f, tm_spl, isTonal=True)
+            masker = Masker(
+                tm_f, tm_spl, isTonal=True, isSide=(iCh == 1)
+            )  # apply BMLD correction if is side
             masker_intensity = masker.vIntensityAtFreq(freqs)
             masking_curve = SPL(masker_intensity)
             masked_thresh = np.maximum(masked_thresh, masking_curve)  # alpha=inf
         for ns_f, ns_intensity in noise_maskers_MS[iCh]:
             ns_spl = SPL(ns_intensity)
-            masker = Masker(ns_f, ns_spl, isTonal=False)
+            masker = Masker(
+                ns_f, ns_spl, isTonal=False, isSide=(iCh == 1)
+            )  # apply BMLD correction if is side
             masker_intensity = masker.vIntensityAtFreq(freqs)
             masking_curve = SPL(masker_intensity)
             masked_thresh = np.maximum(masked_thresh, masking_curve)  # alpha=inf
@@ -344,11 +372,11 @@ def CalcSMRs_MS(data_LR, MDCTdata_MS, MDCTscale_MS, sampleRate, sfBands, psi_arr
                 sampleRate: is the sampling rate of the time domain samples
                 sfBands:    points to information about which MDCT frequency lines
                             are in which scale factor band
+                psi_array:  array of rotational anglesm, used for masking calculations.
 
     Returns:
-                SMR[sfBands.nBands] is the maximum signal-to-mask ratio in each
-                                    scale factor band
-
+        SMRs_MS:       [2] of arrays, each containing the maximum signal-to-mask ratio in each
+                       scale factor band for the corresponding channel.
     Logic:
                 Performs an FFT of data[N] and identifies tonal and noise maskers.
                 Combines their relative masking curves and the hearing threshold
