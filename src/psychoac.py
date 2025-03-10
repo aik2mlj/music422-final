@@ -159,45 +159,8 @@ def identifyMaskers(data, sampleRate, sfBands):
     data_windowed = HanningWindow(data)
     # FFT
     spectrum = scipy.fft.rfft(data_windowed)[:-1]
-    freqs = np.arange(N // 2) / N * sampleRate
 
-    # get intensity & SPL
-    intensity = intensity_from_DFT(spectrum)
-
-    # get peak indices where potentially tonal maskers locate
-    peak_indices = scipy.signal.argrelextrema(intensity, np.greater, order=1)[0]
-    # peak_indices = [i for i in peak_indices if intensity[i] > np.mean(intensity)]
-
-    # get tonal maskers
-    tonal_maskers = []
-    for p in peak_indices:
-        # aggregate the intensity values across the peak
-        intensity_agg = intensity[p - 1] + intensity[p] + intensity[p + 1]
-        # center of mass interpolation for peak frequency estimation
-        freq_peak = (
-            sampleRate
-            / N
-            * ((p - 1) * intensity[p - 1] + p * intensity[p] + (p + 1) * intensity[p + 1])
-            / intensity_agg
-        )
-        tonal_maskers.append((freq_peak, intensity_agg))
-
-    # get noise maskers: within each critical band, sum up the intensity excluding the tonal ones.
-    noise_maskers = []
-    for lower_l, upper_l in zip(sfBands.lowerLine, sfBands.upperLine):
-        noise_indices = np.arange(lower_l, upper_l + 1)
-        # remove tonal indices from the noise indices
-        for peak in peak_indices:
-            noise_indices = noise_indices[noise_indices != peak]
-        if len(noise_indices) == 0:
-            continue
-        # sum up the intensity
-        noise_intensity = np.sum(intensity[noise_indices])
-        # the center frequency is the geometric mean of this critical band
-        noise_freq = np.exp(np.mean(np.log(np.maximum(1, freqs[noise_indices]))))
-        noise_maskers.append((noise_freq, noise_intensity))
-
-    return tonal_maskers, noise_maskers
+    return identifyMaskers_from_spectrum(spectrum, N, sampleRate, sfBands)
 
 
 def getMaskedThreshold(data, MDCTdata, MDCTscale, sampleRate, sfBands):
@@ -220,13 +183,12 @@ def getMaskedThreshold(data, MDCTdata, MDCTscale, sampleRate, sfBands):
         masker_intensity = masker.vIntensityAtFreq(freqs)
         masking_curve = SPL(masker_intensity)
         masked_thresh = np.maximum(masked_thresh, masking_curve)  # alpha=inf
-    # for debug purpose, do not use noise maskers
-    # for ns_f, ns_intensity in noise_maskers:
-    #     ns_spl = SPL(ns_intensity)
-    #     masker = Masker(ns_f, ns_spl, isTonal=False)
-    #     masker_intensity = masker.vIntensityAtFreq(freqs)
-    #     masking_curve = SPL(masker_intensity)
-    #     masked_thresh = np.maximum(masked_thresh, masking_curve)  # alpha=inf
+    for ns_f, ns_intensity in noise_maskers:
+        ns_spl = SPL(ns_intensity)
+        masker = Masker(ns_f, ns_spl, isTonal=False)
+        masker_intensity = masker.vIntensityAtFreq(freqs)
+        masking_curve = SPL(masker_intensity)
+        masked_thresh = np.maximum(masked_thresh, masking_curve)  # alpha=inf
     return masked_thresh
 
 
@@ -294,7 +256,8 @@ def identifyMaskers_from_spectrum(spectrum, N, sampleRate, sfBands):
     # get noise maskers: within each critical band, sum up the intensity excluding the tonal ones.
     noise_maskers = []
     for lower_l, upper_l in zip(sfBands.lowerLine, sfBands.upperLine):
-        noise_indices = np.arange(lower_l, upper_l + 1)
+        freq_indices = np.arange(lower_l, upper_l + 1)
+        noise_indices = freq_indices
         # remove tonal indices from the noise indices
         for peak in peak_indices:
             noise_indices = noise_indices[noise_indices != peak]
@@ -303,7 +266,7 @@ def identifyMaskers_from_spectrum(spectrum, N, sampleRate, sfBands):
         # sum up the intensity
         noise_intensity = np.sum(intensity[noise_indices])
         # the center frequency is the geometric mean of this critical band
-        noise_freq = np.exp(np.mean(np.log(np.maximum(1, freqs[noise_indices]))))
+        noise_freq = np.exp(np.mean(np.log(np.maximum(1, freqs[freq_indices]))))
         noise_maskers.append((noise_freq, noise_intensity))
 
     return tonal_maskers, noise_maskers
@@ -357,13 +320,12 @@ def getMaskedThreshold_MS(data_LR, sampleRate, sfBands, psi_array):
             masker_intensity = masker.vIntensityAtFreq(freqs)
             masking_curve = SPL(masker_intensity)
             masked_thresh = np.maximum(masked_thresh, masking_curve)  # alpha=inf
-        # for debug purpose, do not use noise maskers
-        # for ns_f, ns_intensity in noise_maskers_MS[iCh]:
-        #     ns_spl = SPL(ns_intensity)
-        #     masker = Masker(ns_f, ns_spl, isTonal=False)
-        #     masker_intensity = masker.vIntensityAtFreq(freqs)
-        #     masking_curve = SPL(masker_intensity)
-        #     masked_thresh = np.maximum(masked_thresh, masking_curve)  # alpha=inf
+        for ns_f, ns_intensity in noise_maskers_MS[iCh]:
+            ns_spl = SPL(ns_intensity)
+            masker = Masker(ns_f, ns_spl, isTonal=False)
+            masker_intensity = masker.vIntensityAtFreq(freqs)
+            masking_curve = SPL(masker_intensity)
+            masked_thresh = np.maximum(masked_thresh, masking_curve)  # alpha=inf
         masked_thresh_MS.append(masked_thresh)
     return masked_thresh_MS
 
