@@ -86,7 +86,7 @@ def apply_inverse_rotation(
     Apply the inverse rotation to the MDCT lines.
     Return mdctLines_L and mdctLines_R.
     """
-    psi_array = vDequantizeUniform(quantized_rotation_angles, nPsiBits) * (np.pi / 2)
+    psi_array = vDequantizeUniform(np.array(quantized_rotation_angles), nPsiBits) * (np.pi / 2)
     mdctLines_L = np.zeros_like(mdctLines_M)
     mdctLines_R = np.zeros_like(mdctLines_M)
 
