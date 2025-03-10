@@ -104,11 +104,21 @@ def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
                 mt[i] = 2
                 totalBits += 2 * nLines[i]
 
+    # if over budget, cut lines that has more than 2 bits
     if totalBits > bitBudget:
         for i in reversed(range(nBands)):
             if mt[i] > 2:
                 mt[i] -= 1
                 totalBits -= nLines[i]
+            if totalBits <= bitBudget:
+                break
+
+    # still over budget, cut lines that has exactly 2 bits
+    if totalBits > bitBudget:
+        for i in reversed(range(nBands)):
+            if mt[i] == 2:
+                mt[i] = 0
+                totalBits -= nLines[i] * 2
             if totalBits <= bitBudget:
                 break
 
