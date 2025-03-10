@@ -110,6 +110,7 @@ from psychoac import (
 )  # defines the grouping of MDCT lines into scale factor bands
 
 import numpy as np  # to allow conversion of data blocks to numpy's array object
+import time
 
 MAX16BITS = 32767
 
@@ -443,80 +444,99 @@ class PACFile(AudioFile):
         )
 
 
+def encode_decode(file, bitRate):
+    from pcmfile import PCMFile  # to get access to WAV file handling
+
+    elapsed = time.time()
+    for Direction in ("Encode", "Decode"):
+        #    for Direction in ("Decode",):
+
+        # create the audio file objects
+        if Direction == "Encode":
+            print(
+                "\n\tEncoding input PCM file...",
+            )
+            inFile = PCMFile(file)
+            outFile = PACFile(f"{file.parent}/coded/{file.stem}_{bitRate}kbps.pac")
+        else:  # "Decode"
+            print(
+                "\n\tDecoding coded PAC file...",
+            )
+            inFile = PACFile(f"{file.parent}/coded/{file.stem}_{bitRate}kbps.pac")
+            outFile = PCMFile(f"{file.parent}/coded/{file.stem}_{bitRate}kbps.wav")
+        # only difference is file names and type of AudioFile object
+
+        # open input file
+        codingParams = inFile.OpenForReading()  # (includes reading header)
+
+        # pass parameters to the output file
+        if Direction == "Encode":
+            # set additional parameters that are needed for PAC file
+            # (beyond those set by the PCM file on open)
+            codingParams.nMDCTLines = 512
+            codingParams.nScaleBits = 4
+            codingParams.nMantSizeBits = 4
+            codingParams.targetBitsPerSample = bitRate / codingParams.sampleRate * 1000
+            # tell the PCM file how large the block size is
+            codingParams.nSamplesPerBlock = codingParams.nMDCTLines
+
+            # M/S coding
+            codingParams.useML = False
+            codingParams.nPsiBits = 4
+        else:  # "Decode"
+            # set PCM parameters (the rest is same as set by PAC file on open)
+            codingParams.bitsPerSample = 16
+        # only difference is in setting up the output file parameters
+
+        # open the output file
+        outFile.OpenForWriting(codingParams)  # (includes writing header)
+
+        # Read the input file and pass its data to the output file to be written
+        while True:
+            data = inFile.ReadDataBlock(codingParams)
+            if not data:
+                break  # we hit the end of the input file
+            outFile.WriteDataBlock(data, codingParams)
+            print(".", end="")  # just to signal how far we've gotten to user
+        # end loop over reading/writing the blocks
+
+        # close the files
+        inFile.Close(codingParams)
+        outFile.Close(codingParams)
+    # end of loop over Encode/Decode
+
+    elapsed = time.time() - elapsed
+    print("\nDone with Encode/Decode test\n")
+    print(elapsed, " seconds elapsed")
+
+
 # -----------------------------------------------------------------------------
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)
 if __name__ == "__main__":
-    import time
-    from pcmfile import *  # to get access to WAV file handling
-
-    elapsed = time.time()
-
+    import argparse
     from pathlib import Path
 
-    folder_path = Path("../audio")
+    parser = argparse.ArgumentParser(description="Process a WAV file for encoding or decoding.")
+    parser.add_argument(
+        "--input_file",
+        type=str,
+        help="Path to the input WAV file. If not specified, will iterate over all the WAV files in '../audio/'.",
+    )
+    args = parser.parse_args()
+    bitRates = [96]
+    # bitRates = [128, 192]
 
+    if args.input_file:
+        for bitRate in bitRates:
+            print(f"bitRate = {bitRate}")
+            encode_decode(args.input_file, bitRate)
+        exit(0)
+
+    folder_path = Path("../audio")
     for file in folder_path.iterdir():
         if file.is_file() and file.suffix == ".wav":
             print(file)
-            for bitRate in {128, 192}:
-                for Direction in ("Encode", "Decode"):
-                    #    for Direction in ("Decode",):
-
-                    # create the audio file objects
-                    if Direction == "Encode":
-                        print(
-                            "\n\tEncoding input PCM file...",
-                        )
-                        inFile = PCMFile(file)
-                        outFile = PACFile(f"{file.parent}/coded/{file.stem}_{bitRate}kbps.pac")
-                    else:  # "Decode"
-                        print(
-                            "\n\tDecoding coded PAC file...",
-                        )
-                        inFile = PACFile(f"{file.parent}/coded/{file.stem}_{bitRate}kbps.pac")
-                        outFile = PCMFile(f"{file.parent}/coded/{file.stem}_{bitRate}kbps.wav")
-                    # only difference is file names and type of AudioFile object
-
-                    # open input file
-                    codingParams = inFile.OpenForReading()  # (includes reading header)
-
-                    # pass parameters to the output file
-                    if Direction == "Encode":
-                        # set additional parameters that are needed for PAC file
-                        # (beyond those set by the PCM file on open)
-                        codingParams.nMDCTLines = 512
-                        codingParams.nScaleBits = 4
-                        codingParams.nMantSizeBits = 4
-                        codingParams.targetBitsPerSample = bitRate / codingParams.sampleRate * 1000
-                        # tell the PCM file how large the block size is
-                        codingParams.nSamplesPerBlock = codingParams.nMDCTLines
-
-                        # M/S coding
-                        codingParams.useML = False
-                        codingParams.nPsiBits = 4
-                    else:  # "Decode"
-                        # set PCM parameters (the rest is same as set by PAC file on open)
-                        codingParams.bitsPerSample = 16
-                    # only difference is in setting up the output file parameters
-
-                    # open the output file
-                    outFile.OpenForWriting(codingParams)  # (includes writing header)
-
-                    # Read the input file and pass its data to the output file to be written
-                    while True:
-                        data = inFile.ReadDataBlock(codingParams)
-                        if not data:
-                            break  # we hit the end of the input file
-                        outFile.WriteDataBlock(data, codingParams)
-                        print(".", end="")  # just to signal how far we've gotten to user
-                    # end loop over reading/writing the blocks
-
-                    # close the files
-                    inFile.Close(codingParams)
-                    outFile.Close(codingParams)
-                # end of loop over Encode/Decode
-
-                elapsed = time.time() - elapsed
-                print("\nDone with Encode/Decode test\n")
-                print(elapsed, " seconds elapsed")
+            for bitRate in bitRates:
+                print(f"bitRate = {bitRate}")
+                encode_decode(file, bitRate)
