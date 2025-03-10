@@ -488,7 +488,7 @@ if __name__ == "__main__":
                         codingParams.nMDCTLines = 512
                         codingParams.nScaleBits = 4
                         codingParams.nMantSizeBits = 4
-                        codingParams.targetBitsPerSample = 2.667 if bitRate == 128 else 4
+                        codingParams.targetBitsPerSample = bitRate / codingParams.sampleRate * 1000
                         # tell the PCM file how large the block size is
                         codingParams.nSamplesPerBlock = codingParams.nMDCTLines
 
