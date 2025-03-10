@@ -95,7 +95,6 @@ def Encode(data, codingParams):
     sfBands = codingParams.sfBands
 
     # compute target mantissa bit budget for this block of halfN MDCT mantissas
-    # TODO: change bitBudget to take M/S into consideration
     bitBudget = codingParams.targetBitsPerSample * halfN  # this is overall target bit rate
     bitBudget -= nScaleBits * (
         sfBands.nBands + 1
@@ -131,11 +130,18 @@ def Encode(data, codingParams):
     if codingParams.useML:
         raise NotImplementedError("ML bit allocation not implemented yet")
     else:
-        # TODO: split bitBudget unevenly?
+        # Split bitBudget unevenly?
+        # Yes, in order to decrease the average block squared error,
+        # The bitBudge should be split according to the SMR value of these two channels
+        SMR_sum_MS = [np.sum(np.array(SMRs_MS[iCh]) * sfBands.nLines) for iCh in range(2)]
+        SMR_sum_avg = 0.5 * (SMR_sum_MS[0] + SMR_sum_MS[1])
+        bitBudget_MS = [bitBudget + 0.1661 * (SMR_sum_MS[iCh] - SMR_sum_avg) for iCh in range(2)]
+        # bitBudget_MS = [0.5 * bitBudget * 2, 0.5 * bitBudget * 2]
+        # print(bitBudget_MS)
         for iCh in range(2):
             (s, b, m) = getCoded_from_SMR(
                 N,
-                bitBudget,
+                bitBudget_MS[iCh],
                 maxMantBits,
                 sfBands,
                 SMRs_MS[iCh],
