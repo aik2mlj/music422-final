@@ -63,7 +63,8 @@ def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
     """
     # return BitAllocConstSNR(bitBudget, maxMantBits, nBands, nLines, SMR)
     # print(f"bitBudget: {bitBudget}")
-    target_area = bitBudget * 6
+    areaPerBit = 6.02
+    target_area = bitBudget * areaPerBit
     lo = -1000
     hi = 1000
 
@@ -79,7 +80,7 @@ def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
 
     mid = (lo + hi) / 2
     # print(mid)
-    mt = (SMR - mid) / 6
+    mt = (SMR - mid) / areaPerBit
     mt = np.maximum(mt, 0)
     mt = np.array(np.round(mt, decimals=0), dtype=int)
     # print(mt)
