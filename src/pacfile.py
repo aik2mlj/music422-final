@@ -524,13 +524,13 @@ if __name__ == "__main__":
         help="Path to the input WAV file. If not specified, will iterate over all the WAV files in '../audio/'.",
     )
     args = parser.parse_args()
-    bitRates = [96]
+    bitRates = [96, 128]
     # bitRates = [128, 192]
 
     if args.input_file:
         for bitRate in bitRates:
             print(f"bitRate = {bitRate}")
-            encode_decode(args.input_file, bitRate)
+            encode_decode(Path(args.input_file), bitRate)
         exit(0)
 
     folder_path = Path("../audio")
