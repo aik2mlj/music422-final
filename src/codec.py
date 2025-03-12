@@ -136,7 +136,11 @@ def Encode(data, codingParams):
         SMR_sum_MS = [np.sum(np.array(SMRs_MS[iCh]) * sfBands.nLines) for iCh in range(2)]
         SMR_sum_avg = 0.5 * (SMR_sum_MS[0] + SMR_sum_MS[1])
         bitBudget_MS = [bitBudget + 0.1661 * (SMR_sum_MS[iCh] - SMR_sum_avg) for iCh in range(2)]
-        # bitBudget_MS = [0.5 * bitBudget * 2, 0.5 * bitBudget * 2]
+        if bitBudget_MS[1] < 0:
+            # incase side channel has negative bit budget
+            bitBudget_MS[0] += bitBudget_MS[1]
+            bitBudget_MS[1] = 0
+        # bitBudget_MS = [bitBudget * 2, 0]
         # print(bitBudget_MS)
         for iCh in range(2):
             (s, b, m) = getCoded_from_SMR(

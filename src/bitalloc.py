@@ -61,6 +61,10 @@ def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
 
 
     """
+    if bitBudget <= 0:
+        # print("warning: bitBudget <= 0")
+        return np.zeros(nBands, dtype=int)
+
     # return BitAllocConstSNR(bitBudget, maxMantBits, nBands, nLines, SMR)
     # print(f"bitBudget: {bitBudget}")
     areaPerBit = 6.02
@@ -128,8 +132,11 @@ def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
             if mt[i] != 0 and mt[i] < maxMantBits and totalBits + nLines[i] <= bitBudget:
                 mt[i] += 1
                 totalBits += nLines[i]
-    # print(mt)
-    # print(totalBits)
+    # try:
+    #     assert totalBits <= bitBudget
+    # except AssertionError:
+    #     print("mt")
+    #     print(totalBits, bitBudget)
     assert totalBits <= bitBudget
 
     return mt
