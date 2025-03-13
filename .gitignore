@@ -176,3 +176,7 @@ audio/
 *.wav
 *.zip
 .DS_Store
+/data/
+runs/
+*.pth
+*.npy
