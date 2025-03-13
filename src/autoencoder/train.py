@@ -6,7 +6,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-import matplotlib.pyplot as plt
+
+# import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm, trange
 
 # import the model
 from model import AE
@@ -32,20 +35,36 @@ def train(
 
     os.makedirs("checkpoints", exist_ok=True)
 
+    # Create tensorboard writer
+    writer = SummaryWriter(log_dir="runs/autoencoder")
+    print(f"TensorBoard logs will be saved to 'runs/autoencoder'")
+
     model.to(device)
 
     train_losses = []
     val_losses = []
     best_val_loss = float("inf")  # Initialize with infinity
 
-    for epoch in range(num_epochs):
+    # Create epoch progress bar
+    epoch_bar = trange(num_epochs, desc="Epochs", position=0)
+
+    for epoch in epoch_bar:
         epoch_start_time = time.time()
 
         model.train()
         train_loss = 0.0
         num_batches = len(train_loader)  # check for number of batches
 
-        for batch_idx, (data, _) in enumerate(train_loader):
+        # Create batch progress bar
+        batch_bar = tqdm(
+            train_loader,
+            desc=f"Training (Epoch {epoch + 1}/{num_epochs})",
+            leave=False,
+            position=1,
+            total=num_batches,
+        )
+
+        for batch_idx, (data, _) in enumerate(batch_bar):
             data = data.to(device)
 
             # zero the gradients
@@ -64,11 +83,8 @@ def train(
             # update the train loss
             train_loss += loss.item()
 
-            # print the progress
-            if batch_idx % 100 == 0:
-                print(
-                    f"Epoch [{epoch + 1}/{num_epochs}] Batch [{batch_idx + 1}/{num_batches}] Loss: {loss.item():.4f}"
-                )
+            # Update batch progress bar
+            batch_bar.set_postfix(loss=f"{loss.item():.4f}")
 
         # calculate the average train loss
         avg_train_loss = train_loss / num_batches
@@ -77,8 +93,18 @@ def train(
         # validate the model
         model.eval()
         val_loss = 0.0
+
+        # Create validation progress bar
+        val_bar = tqdm(
+            val_loader,
+            desc=f"Validation (Epoch {epoch + 1}/{num_epochs})",
+            leave=False,
+            position=1,
+            total=len(val_loader),
+        )
+
         with torch.no_grad():
-            for batch_idx, (data, _) in enumerate(val_loader):
+            for batch_idx, (data, _) in enumerate(val_bar):
                 data = data.to(device)
                 output = model(data)
                 loss = criterion(output, data)
@@ -86,14 +112,29 @@ def train(
                 # loss = nn.L1Loss()(output, data)
                 val_loss += loss.item()
 
+                # Update validation progress bar
+                val_bar.set_postfix(loss=f"{loss.item():.4f}")
+
         # calculate the average validation loss
         avg_val_loss = val_loss / len(val_loader)
         val_losses.append(avg_val_loss)
 
+        # Log metrics to TensorBoard
+        writer.add_scalar("Loss/train", avg_train_loss, epoch)
+        writer.add_scalar("Loss/validation", avg_val_loss, epoch)
+
+        # Log model parameters histograms (optional)
+        for name, param in model.named_parameters():
+            writer.add_histogram(f"Parameters/{name}", param, epoch)
+
         # print the progress
         epoch_end_time = time.time() - epoch_start_time
-        print(
-            f"Epoch [{epoch + 1}/{num_epochs}] Train Loss: {avg_train_loss:.4f} Val Loss: {avg_val_loss:.4f} Time: {epoch_end_time:.2f}s"
+
+        # Update epoch progress bar
+        epoch_bar.set_postfix(
+            train_loss=f"{avg_train_loss:.4f}",
+            val_loss=f"{avg_val_loss:.4f}",
+            time=f"{epoch_end_time:.2f}s",
         )
 
         # save the model if it has the lowest validation loss
@@ -107,6 +148,11 @@ def train(
                 },
                 "best_model.pth",
             )
+            epoch_bar.set_postfix(
+                train_loss=f"{avg_train_loss:.4f}",
+                val_loss=f"{avg_val_loss:.4f} (best)",
+                time=f"{epoch_end_time:.2f}s",
+            )
 
         # save checkpoint every 10 epochs
         if (epoch + 1) % 10 == 0:
@@ -119,19 +165,14 @@ def train(
                 f"checkpoints/model_epoch_{epoch + 1}.pth",
             )
 
-    # plot the training and validation losses
-    plt.figure(figsize=(10, 5))
-    plt.plot(train_losses, label="Train Loss")
-    plt.plot(val_losses, label="Validation Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title("Training and Validation Losses")
-    plt.legend()
-    plt.savefig("losses.png")
+    # Close the TensorBoard writer
+    writer.close()
 
     # save the training and validation losses
     np.save("train_losses.npy", train_losses)
     np.save("val_losses.npy", val_losses)
+
+    print("Training complete. Use 'tensorboard --logdir=runs' to visualize training curves.")
 
     return train_losses, val_losses
 
@@ -151,14 +192,21 @@ def evaluate(model, test_loader, criterion=None, device=None):
     model.eval()
 
     test_loss = 0.0
+
+    # Create test progress bar
+    test_bar = tqdm(test_loader, desc="Testing", total=len(test_loader))
+
     with torch.no_grad():
-        for data, _ in test_loader:
+        for data, _ in test_bar:
             data = data.to(device)
             output = model(data)
             loss = criterion(output, data)
             # Alternative loss calculation:
             # loss = nn.L1Loss()(output, data)
             test_loss += loss.item()
+
+            # Update test progress bar
+            test_bar.set_postfix(loss=f"{loss.item():.4f}")
 
     avg_test_loss = test_loss / len(test_loader)
     print(f"Test Loss: {avg_test_loss:.4f}")
@@ -175,22 +223,6 @@ def evaluate(model, test_loader, criterion=None, device=None):
     data = data.cpu().numpy()
     output = output.cpu().numpy()
 
-    # Plot original vs reconstructed
-    plt.figure(figsize=(12, 6))
-    for i in range(5):
-        # Original - Plot first 20 dimensions for visibility
-        plt.subplot(2, 5, i + 1)
-        plt.plot(data[i, :20])
-        plt.title(f"Original {i + 1}")
-
-        # Reconstruction - Plot first 20 dimensions for visibility
-        plt.subplot(2, 5, i + 6)
-        plt.plot(output[i, :20])
-        plt.title(f"Reconstructed {i + 1}")
-
-    plt.tight_layout()
-    plt.savefig("test_reconstructions.png")
-
     return avg_test_loss
 
 
@@ -200,7 +232,10 @@ def main():
     """
     parser = argparse.ArgumentParser(description="Train an autoencoder")
     parser.add_argument(
-        "--data_path", type=str, required=True, help="Path to data file (.txt or .npy)"
+        "--data_path",
+        type=str,
+        default="../../data/dump.npy",
+        help="Path to data file (.txt or .npy)",
     )
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
@@ -213,13 +248,15 @@ def main():
     args = parser.parse_args()
 
     # Get train and validation data loaders
+    print(f"Loading data from {args.data_path}...")
     train_loader, val_loader = get_data_loaders(
         data_path=args.data_path,
         batch_size=args.batch_size,
         val_split=0.2,  # Use 20% of data for validation
-        num_workers=4,
+        num_workers=0,
         normalize=True,
     )
+    print(f"Data loaded successfully! Ready for training.")
 
     # Get input dimension from a sample batch
     sample_batch, _ = next(iter(train_loader))
@@ -269,7 +306,7 @@ def main():
 
     print("Training complete!")
     print(f"Best model saved to best_model.pth")
-    print(f"Loss plot saved to losses.png")
+    print(f"To view training curves, run: tensorboard --logdir=runs")
 
 
 if __name__ == "__main__":

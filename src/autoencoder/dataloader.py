@@ -77,12 +77,14 @@ class AutoencoderDataset(Dataset):
         return sample, sample  # This creates the (data, _) format your training loop expects
 
 
-def get_data_loaders(data_path, batch_size=32, val_split=0.2, num_workers=4, normalize=True):
+def get_data_loaders(
+    data_path="../../data/dump.npy", batch_size=32, val_split=0.2, num_workers=4, normalize=True
+):
     """
     Create train and validation dataloaders
 
     Args:
-        data_path (str): Path to data file
+        data_path (str): Path to data file, defaults to "../../data/dump.npy"
         batch_size (int): Batch size
         val_split (float): Validation split ratio (0-1)
         num_workers (int): Number of worker processes

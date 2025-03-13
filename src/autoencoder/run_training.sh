@@ -5,17 +5,12 @@
 # Activate your virtual environment if needed
 # source venv/bin/activate
 
-# Set data path - CHANGE THIS TO YOUR ACTUAL DATA PATH
-DATA_PATH="path/to/your/data.txt"
-
 # Run the training script with parameters
 python train.py \
-    --data_path $DATA_PATH \
-    --batch_size 32 \
-    --epochs 200 \
-    --latent_dim 32 \
-    --learning_rate 0.001 \
-    --test_split 0.1
+    --batch_size 64 \
+    --epochs 100 \
+    --latent_dim 256 \
+    --learning_rate 0.001
 
 echo "Training complete!"
 
