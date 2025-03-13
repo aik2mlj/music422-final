@@ -510,6 +510,92 @@ def encode_decode(file, bitRate):
     print(elapsed, " seconds elapsed")
 
 
+def get_side_MDCTLines(data, codingParams):
+    from window import SineWindow
+    from rotation import rotational_ms
+    from mdct import MDCT
+
+    # get MDCT lines
+    halfN = codingParams.nMDCTLines
+    mdctTimeSamples_L = SineWindow(data[0])
+    mdctLines_L = MDCT(mdctTimeSamples_L, halfN, halfN)[:halfN]
+    mdctTimeSamples_R = SineWindow(data[1])
+    mdctLines_R = MDCT(mdctTimeSamples_R, halfN, halfN)[:halfN]
+
+    # calculate rotaional M/S
+    psi_array, mdctLines_M, mdctLines_S = rotational_ms(
+        mdctLines_L, mdctLines_R, codingParams.sfBands
+    )
+    mdctLines_MS = [mdctLines_M, mdctLines_S]
+    return mdctLines_MS
+
+
+def extract_side_MDCTLines_from_wav(file):
+    from pcmfile import PCMFile  # to get access to WAV file handling
+    from quantize import ScaleFactor
+
+    # create the audio file objects
+    print(f"\nExtracting side MDCT from input PCM file: {file}")
+    inFile = PCMFile(file)
+    # outFile = PACFile(f"{file.parent}/coded/{file.stem}_{bitRate}kbps.pac")
+
+    # open input file
+    codingParams = inFile.OpenForReading()  # (includes reading header)
+
+    codingParams.nMDCTLines = 512
+    codingParams.nScaleBits = 4
+    codingParams.nMantSizeBits = 4
+    # codingParams.targetBitsPerSample = bitRate / codingParams.sampleRate * 1000
+    # tell the PCM file how large the block size is
+    codingParams.nSamplesPerBlock = codingParams.nMDCTLines
+
+    # M/S coding
+    codingParams.useML = False
+    codingParams.nPsiBits = 4
+
+    sfBands = ScaleFactorBands(
+        AssignMDCTLinesFromFreqLimits(codingParams.nMDCTLines, codingParams.sampleRate)
+    )
+    codingParams.sfBands = sfBands
+    # start w/o all zeroes as prior block of unencoded data for other half of MDCT block
+    priorBlock = []
+    for iCh in range(codingParams.nChannels):
+        priorBlock.append(np.zeros(codingParams.nMDCTLines, dtype=np.float64))
+    codingParams.priorBlock = priorBlock
+
+    side_mdctlines_array = []
+    # Read the input file and pass its data to the output file to be written
+    while True:
+        data = inFile.ReadDataBlock(codingParams)
+        if not data:
+            break  # we hit the end of the input file
+
+        # used to be WriteDataBlock, now manually extract the side MDCT lines
+        fullBlockData = []
+        for iCh in range(codingParams.nChannels):
+            fullBlockData.append(np.concatenate((codingParams.priorBlock[iCh], data[iCh])))
+        codingParams.priorBlock = data  # current pass's data is next pass's prior block data
+
+        mdctLines_MS = get_side_MDCTLines(fullBlockData, codingParams)
+
+        # compute overall scale factor for M/S block and boost mdctLines using it
+        overallScaleFactor = []
+        for iCh in range(2):
+            maxLine = np.max(np.abs(mdctLines_MS[iCh]))
+            overallScale = ScaleFactor(maxLine, codingParams.nScaleBits)
+            mdctLines_MS[iCh] *= 1 << overallScale
+            overallScaleFactor.append(overallScale)
+
+        side_mdctlines_array.append(mdctLines_MS[1])
+
+    # close the files
+    inFile.Close(codingParams)
+
+    side_mdctlines_array = np.array(side_mdctlines_array)
+    print(side_mdctlines_array.shape)
+    return side_mdctlines_array
+
+
 # -----------------------------------------------------------------------------
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)
@@ -523,9 +609,33 @@ if __name__ == "__main__":
         type=str,
         help="Path to the input WAV file. If not specified, will iterate over all the WAV files in '../audio/'.",
     )
+    parser.add_argument(
+        "--extract_side",
+        action="store_true",
+    )
     args = parser.parse_args()
     bitRates = [96, 128]
     # bitRates = [128, 192]
+
+    if args.extract_side:
+        if args.input_file:
+            extract_side_MDCTLines_from_wav(Path(args.input_file))
+        else:
+            folder_path = Path("../audio")
+            side_mdctlines_array = []
+            for file in folder_path.iterdir():
+                if file.is_file() and file.suffix == ".wav":
+                    print(file)
+                    side_mdctlines_array.append(extract_side_MDCTLines_from_wav(file))
+            side_mdctlines_array = np.concatenate(side_mdctlines_array, axis=0)
+            # if exists "../dump.npy", concatenate the new data to it
+            if Path("../dump.npy").exists():
+                side_mdctlines_array = np.concatenate(
+                    [np.load("../dump.npy"), side_mdctlines_array], axis=0
+                )
+            # write to dump.npy
+            np.save("../dump.npy", side_mdctlines_array)
+        exit(0)
 
     if args.input_file:
         for bitRate in bitRates:
