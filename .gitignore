@@ -175,3 +175,4 @@ cython_debug/
 audio/
 *.wav
 *.zip
+.DS_Store
