@@ -8,9 +8,11 @@
 # Run the training script with parameters
 python train.py \
     --batch_size 64 \
-    --epochs 100 \
-    --latent_dim 256 \
-    --learning_rate 0.001
+    --epochs 200 \
+    --latent_dim 64 \
+    --learning_rate 0.0005 \
+    --model_type conv \
+    # --beta 0.25  # Weight for the VQ loss component
 
 echo "Training complete!"
 
@@ -19,4 +21,6 @@ echo "Training complete!"
 # --batch_size: Number of samples per batch
 # --epochs: Number of training epochs
 # --latent_dim: Dimension of the latent space (compression level)
-# --learning_rate: Learning rate for the optimizer 
+# --learning_rate: Learning rate for the optimizer
+# --model_type: Type of autoencoder model ("linear", "conv", or "vq") 
+# --beta: Weight for the VQ loss component (only used if model_type is 'vq') 
