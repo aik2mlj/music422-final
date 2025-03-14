@@ -18,17 +18,14 @@ class AutoencoderDataset(Dataset):
         # Load data from a text file with 512-dimensional vectors
         self.data = []
 
-        # Check if the file is txt or npy
         if data_path.endswith(".txt"):
             with open(data_path, "r") as f:
                 for i, line in enumerate(f):
                     try:
-                        # Parse the line to extract the 512-dimensional vector
-                        # Assuming values are space-separated
                         values = line.strip().split()
-                        # Convert each value to float
+
                         vector = [float(val) for val in values]
-                        # Ensure vector is 512-dimensional
+
                         if len(vector) != 512:
                             print(
                                 f"Warning: Line {i + 1} has vector with length {len(vector)}, expected 512"
@@ -39,15 +36,14 @@ class AutoencoderDataset(Dataset):
                         print(f"Error parsing line {i + 1}: {e}")
                         continue
 
-            # Convert to numpy array for easier indexing
+            # Convert to numpy array
             self.data = np.array(self.data, dtype=np.float32)
         elif data_path.endswith(".npy"):
-            # If it's a numpy file, load it directly
             self.data = np.load(data_path)
         else:
             raise ValueError(f"Unsupported file format: {data_path}. Expected .txt or .npy")
 
-        # Normalize the data if requested
+        # Normalize the data
         if normalize:
             self.mean = np.mean(self.data, axis=0)
             self.std = np.std(self.data, axis=0)
@@ -62,19 +58,15 @@ class AutoencoderDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        # Get data sample
         sample = self.data[idx]
 
-        # Apply transforms if any
         if self.transform:
             sample = self.transform(sample)
         else:
-            # Convert to tensor if no transforms
             sample = torch.FloatTensor(sample)
 
         # Return sample twice (for autoencoder, input = target)
-        # The second copy is ignored in training but included for consistency
-        return sample, sample  # This creates the (data, _) format your training loop expects
+        return sample, sample
 
 
 def get_data_loaders(
@@ -93,10 +85,10 @@ def get_data_loaders(
     Returns:
         tuple: (train_loader, val_loader)
     """
-    # Create the dataset
+    # Create dataset
     dataset = AutoencoderDataset(data_path, normalize=normalize)
 
-    # Split into train and validation sets
+    # train/val split
     dataset_size = len(dataset)
     val_size = int(val_split * dataset_size)
     train_size = dataset_size - val_size
@@ -109,13 +101,13 @@ def get_data_loaders(
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True,  # Speeds up data transfer to GPU
+        pin_memory=True,
     )
 
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
-        shuffle=False,  # No need to shuffle validation data
+        shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
     )

@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+# Vanilla Autoencoder with linear layers
 class AE(nn.Module):
     def __init__(self, input_dim, latent_dim):
         super(AE, self).__init__()
@@ -42,8 +43,7 @@ class ConvAE(nn.Module):
         self.input_dim = input_dim
         self.latent_dim = latent_dim
 
-        # Encoder: Use 1D conv layers to capture local frequency patterns
-        # Input is assumed to be a 1D vector of length input_dim.
+        # Encoder: 1D conv layers
         self.encoder_conv = nn.Sequential(
             # Input shape: (batch, 1, input_dim)
             nn.Conv1d(1, 16, kernel_size=3, stride=2, padding=1),  # -> (batch, 16, input_dim/2)
@@ -53,10 +53,10 @@ class ConvAE(nn.Module):
             nn.Conv1d(32, 64, kernel_size=3, stride=2, padding=1),  # -> (batch, 64, input_dim/8)
             nn.ReLU(),
         )
-        # Calculate the flattened dimension after convolutions
+
         conv_out_dim = (input_dim // 8) * 64
 
-        # Fully connected part of the encoder
+        # Fully connected layers
         self.fc_enc = nn.Sequential(
             nn.Linear(conv_out_dim, 128),
             nn.ReLU(),
@@ -65,7 +65,6 @@ class ConvAE(nn.Module):
         )
 
         # Decoder: Fully connected layers to expand the latent vector back,
-        # then 1D transposed conv layers to reconstruct the original vector.
         self.fc_dec = nn.Sequential(
             nn.Linear(latent_dim, 128),
             nn.ReLU(),
@@ -80,7 +79,6 @@ class ConvAE(nn.Module):
             nn.ConvTranspose1d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
             nn.ConvTranspose1d(16, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
-            # You might add an activation (e.g. Tanh) here depending on your data scaling.
         )
 
     def forward(self, x):
@@ -89,18 +87,18 @@ class ConvAE(nn.Module):
         x = x.unsqueeze(1)
         x = self.encoder_conv(x)  # Shape: (batch, 64, input_dim//8)
         x = x.view(x.size(0), -1)  # Flatten to (batch, conv_out_dim)
-        latent = self.fc_enc(x)  # Latent vector
+        latent = self.fc_enc(x)
 
         x = self.fc_dec(latent)
         # Reshape back into convolutional feature map: (batch, 64, input_dim//8)
         x = x.view(x.size(0), 64, self.input_dim // 8)
         recon = self.decoder_conv(x)
-        # Squeeze the channel dimension: output shape (batch, input_dim)
+        # Squeeze channel dimension to output shape (batch, input_dim)
         recon = recon.squeeze(1)
         return recon
 
 
-# Vector Quantization layer (following the HF blog approach)
+# Vector Quantization layer (basically copying https://huggingface.co/blog/ariG23498/understand-vq)
 class VectorQuantizer(nn.Module):
     def __init__(self, num_embeddings, embedding_dim, commitment_cost=0.25):
         """
@@ -114,9 +112,9 @@ class VectorQuantizer(nn.Module):
         self.embedding_dim = embedding_dim
         self.commitment_cost = commitment_cost
 
-        # Create codebook as an embedding layer
+        # Create codebook
         self.embeddings = nn.Embedding(num_embeddings, embedding_dim)
-        # Initialize codebook weights uniformly
+        # Uniformly initialize codebook weights
         self.embeddings.weight.data.uniform_(-1.0 / num_embeddings, 1.0 / num_embeddings)
 
     def forward(self, z):
@@ -127,18 +125,15 @@ class VectorQuantizer(nn.Module):
             vq_loss: vector quantization loss (codebook loss + commitment loss)
             perplexity: scalar, for monitoring the codebook usage
         """
-        # Reshape z to ensure it's 2D: [batch_size, embedding_dim]
+        # Reshape z to [batch_size, embedding_dim]
         batch_size = z.size(0)
         z_flat = z.reshape(batch_size, self.embedding_dim)
 
-        # Compute L2 distance between each encoder output and codebook entry
-        # Reshape to prepare for broadcasting:
         # z: [batch_size, embedding_dim] -> [batch_size, 1, embedding_dim]
         # embeddings: [num_embeddings, embedding_dim] -> [1, num_embeddings, embedding_dim]
         z_reshaped = z_flat.unsqueeze(1)
         embeddings = self.embeddings.weight.unsqueeze(0)
 
-        # Calculate squared distances: [batch_size, num_embeddings]
         distances = torch.sum((z_reshaped - embeddings) ** 2, dim=2)
 
         # Find nearest embedding for each z vector
@@ -147,13 +142,13 @@ class VectorQuantizer(nn.Module):
         # Convert to one-hot encodings: [batch_size, num_embeddings]
         encodings = F.one_hot(encoding_indices, self.num_embeddings).float()
 
-        # Quantize the latent vectors: [batch_size, embedding_dim]
+        # Quantize latent vectors: [batch_size, embedding_dim]
         z_q = torch.matmul(encodings, self.embeddings.weight)
 
-        # Compute the losses:
-        # Codebook loss: move the embeddings closer to the encoder outputs
+        # Computation of losses:
+        # Codebook loss
         loss_codebook = F.mse_loss(z_q.detach(), z_flat)
-        # Commitment loss: force the encoder outputs to commit to the codebook entries
+        # Commitment loss
         loss_commit = F.mse_loss(z_q, z_flat.detach())
 
         # Compute average encoding probabilities across batch
@@ -162,20 +157,18 @@ class VectorQuantizer(nn.Module):
         # Compute perplexity for monitoring codebook usage
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
-        # Add diversity loss to encourage higher perplexity
-        # This will be small when perplexity is close to num_embeddings (desired)
-        # and large when perplexity is small (codebook collapse)
+        # Tried adding diversity loss to force higher perplexity
         target_perplexity = self.num_embeddings * 0.1  # Target at least 10% utilization
         perplexity_ratio = torch.clamp(target_perplexity / (perplexity + 1e-10), min=0.0, max=10.0)
         diversity_loss = perplexity_ratio * 0.1  # Scale to not dominate other losses
 
-        # Combine all losses
+        # Add up all losses
         vq_loss = loss_codebook + self.commitment_cost * loss_commit + diversity_loss
 
         # Use a straight-through estimator: in the forward pass, replace z with z_q,
-        # but during backpropagation, the gradient flows as if z was used.
+        # but during backprop, the gradient flows as if z was used.
         z_q = z_flat + (z_q - z_flat).detach()
-        # Make sure we return the same shape as the input
+        # shape check
         z_q = z_q.reshape(z.shape)
 
         return z_q, vq_loss, perplexity
@@ -188,7 +181,7 @@ class ConvAE_VQ(nn.Module):
         self.input_dim = input_dim
         self.latent_dim = latent_dim
 
-        # Encoder: Use 1D conv layers to capture local frequency patterns
+        # Encoder: 1D conv layers
         self.encoder_conv = nn.Sequential(
             # Input shape: (batch, 1, input_dim)
             nn.Conv1d(1, 16, kernel_size=3, stride=2, padding=1),  # -> (batch, 16, input_dim/2)
@@ -198,9 +191,9 @@ class ConvAE_VQ(nn.Module):
             nn.Conv1d(32, 64, kernel_size=3, stride=2, padding=1),  # -> (batch, 64, input_dim/8)
             nn.ReLU(),
         )
-        self.conv_out_dim = (input_dim // 8) * 64  # Store this for reshaping in forward pass
+        self.conv_out_dim = (input_dim // 8) * 64
 
-        # Fully connected part of the encoder
+        # Fully connected layers
         self.fc_enc = nn.Sequential(
             nn.Linear(self.conv_out_dim, 128),
             nn.ReLU(),
@@ -208,10 +201,10 @@ class ConvAE_VQ(nn.Module):
             nn.ReLU(),
         )
 
-        # Vector Quantization layer (discretizes the latent space)
+        # Vector Quantization layer (discretizes latent space)
         self.vq_layer = VectorQuantizer(num_embeddings, latent_dim, commitment_cost=0.25)
 
-        # Decoder: Fully connected layers then 1D transposed conv layers to reconstruct the signal
+        # Decoder: Fully connected layers, then 1D transposed conv layers to reconstruct signal
         self.fc_dec = nn.Sequential(
             nn.Linear(latent_dim, 128),
             nn.ReLU(),
@@ -226,7 +219,6 @@ class ConvAE_VQ(nn.Module):
             nn.ConvTranspose1d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
             nn.ConvTranspose1d(16, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
-            # Optionally add activation (e.g. Tanh) if required by your data scaling.
         )
 
     def forward(self, x):
@@ -239,7 +231,7 @@ class ConvAE_VQ(nn.Module):
         x_flat = x.view(batch_size, -1)  # Flatten to (batch, conv_out_dim)
         latent = self.fc_enc(x_flat)  # (batch, latent_dim)
 
-        # Pass through the VQ layer to get a quantized latent vector
+        # Pass through VQ layer to get quantized latent vector
         z_q, vq_loss, perplexity = self.vq_layer(latent)
 
         # Decode the quantized latent vector

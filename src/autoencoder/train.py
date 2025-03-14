@@ -9,10 +9,10 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
 
-# import the model
+# import model
 from model import AE, ConvAE, ConvAE_VQ
 
-# import the data
+# import data
 from dataloader import get_data_loaders
 
 
@@ -78,11 +78,11 @@ def train(
                 recon, vq_loss, perplexity = model(data)
                 recon_loss = criterion(recon, data)
 
-                # Add weight to VQ loss to balance it with reconstruction loss
+                # Apply weight to VQ loss on top of reconstruction loss
                 total_loss = recon_loss + beta * vq_loss
 
-                # Log individual losses
-                if batch_idx == 0:  # Only log the first batch for clarity
+                # print loss for first batch each epoch
+                if batch_idx == 0:
                     # Calculate diversity metrics for logging
                     target_perplexity = model.vq_layer.num_embeddings * 0.1
                     perplexity_ratio = min(10.0, target_perplexity / (perplexity.item() + 1e-10))
@@ -123,7 +123,7 @@ def train(
                     epoch * len(train_loader) + batch_idx,
                 )
             else:
-                # For standard AE/ConvAE that return only reconstruction
+                # For standard AE/ConvAE return only reconstruction
                 recon = model(data)
                 total_loss = criterion(recon, data)
 
@@ -151,12 +151,11 @@ def train(
                 if use_vq:
                     recon, vq_loss, perplexity = model(data)
                     recon_loss = criterion(recon, data)
-                    # Use the same beta as in training for consistency
                     loss_val = recon_loss + beta * vq_loss
 
                     # Log validation metrics for the first batch
                     if batch_idx == 0:
-                        # Calculate diversity metrics for validation
+                        # Calculate diversity metrics
                         target_perplexity = model.vq_layer.num_embeddings * 0.1
                         perplexity_ratio = min(
                             10.0, target_perplexity / (perplexity.item() + 1e-10)
@@ -309,13 +308,13 @@ def main():
     input_dim = sample_batch.shape[1]
     print(f"Input dimension detected: {input_dim}")
 
-    # Check for ConvAE if input_dim is divisible by 8
+    # For ConvAE, check if input_dim is divisible by 8
     if args.model_type in ["conv", "vq"] and input_dim % 8 != 0:
         print(
             f"WARNING: Input dimension {input_dim} is not divisible by 8, which may cause issues with convolutional models."
         )
 
-    # Instantiate the model based on selected type
+    # Instantiate the model based on selected model type
     if args.model_type == "conv":
         model = ConvAE(input_dim=input_dim, latent_dim=args.latent_dim)
         use_vq = False
@@ -332,7 +331,7 @@ def main():
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
-    # Determine device
+    # Choose device
     if torch.backends.mps.is_available():
         device = torch.device("mps")
         device_name = "mps (Apple Silicon GPU)"
@@ -362,7 +361,7 @@ def main():
         device=device,
     )
 
-    # Load the best model for evaluation
+    # Load best model for evaluation
     if args.model_type == "conv":
         best_model = ConvAE(input_dim=input_dim, latent_dim=args.latent_dim)
     elif args.model_type == "vq":
