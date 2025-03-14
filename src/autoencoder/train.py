@@ -12,7 +12,8 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
 
 # import the model
-from model import AE
+# from model import AE
+from vqvae import VQVAE
 
 # import the data
 from dataloader import get_data_loaders
@@ -20,16 +21,9 @@ from dataloader import get_data_loaders
 # train the model
 
 
-def train(
-    model, train_loader, val_loader, criterion=None, optimizer=None, num_epochs=100, device=None
-):
+def train(model, train_loader, val_loader, criterion, optimizer=None, num_epochs=100, device=None):
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if criterion is None:
-        criterion = nn.MSELoss()  # Default: Mean Squared Error loss
-        # Alternative loss functions:
-        # criterion = nn.L1Loss()  # Mean Absolute Error - can produce sharper reconstructions
-        # criterion = nn.SmoothL1Loss()  # Smooth L1 Loss - less sensitive to outliers than MSE
     if optimizer is None:
         optimizer = optim.Adam(model.parameters(), lr=0.001)
 
@@ -72,9 +66,7 @@ def train(
 
             # forward pass
             output = model(data)
-            loss = criterion(output, data)
-            # Alternative loss calculation with L1Loss (commented out):
-            # loss = nn.L1Loss()(output, data)  # Direct instantiation in-place
+            loss, loss_dict = criterion(output, data)
 
             # backpropagate
             loss.backward()
@@ -82,6 +74,10 @@ def train(
 
             # update the train loss
             train_loss += loss.item()
+            for key, value in loss_dict.items():
+                writer.add_scalar(
+                    f"Loss/train/{key}", value.item(), epoch * len(train_loader) + batch_idx
+                )
 
             # Update batch progress bar
             batch_bar.set_postfix(loss=f"{loss.item():.4f}")
@@ -107,10 +103,16 @@ def train(
             for batch_idx, (data, _) in enumerate(val_bar):
                 data = data.to(device)
                 output = model(data)
-                loss = criterion(output, data)
+                loss, loss_dict = criterion(output, data)
                 # Alternative loss calculation with L1Loss (commented out):
                 # loss = nn.L1Loss()(output, data)
                 val_loss += loss.item()
+                for key, value in loss_dict.items():
+                    writer.add_scalar(
+                        f"Loss/validation/{key}",
+                        value.item(),
+                        epoch * len(train_loader) + batch_idx,
+                    )
 
                 # Update validation progress bar
                 val_bar.set_postfix(loss=f"{loss.item():.4f}")
@@ -120,8 +122,8 @@ def train(
         val_losses.append(avg_val_loss)
 
         # Log metrics to TensorBoard
-        writer.add_scalar("Loss/train", avg_train_loss, epoch)
-        writer.add_scalar("Loss/validation", avg_val_loss, epoch)
+        writer.add_scalar("Loss/train/loss", avg_train_loss, epoch)
+        writer.add_scalar("Loss/validation/loss", avg_val_loss, epoch)
 
         # Log model parameters histograms (optional)
         for name, param in model.named_parameters():
@@ -177,16 +179,12 @@ def train(
     return train_losses, val_losses
 
 
-def evaluate(model, test_loader, criterion=None, device=None):
+def evaluate(model, test_loader, criterion, device=None):
     """
     Evaluate the model on a test dataset
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if criterion is None:
-        criterion = nn.MSELoss()
-        # Alternative: Use L1Loss for evaluation
-        # criterion = nn.L1Loss()
 
     model.to(device)
     model.eval()
@@ -200,7 +198,7 @@ def evaluate(model, test_loader, criterion=None, device=None):
         for data, _ in test_bar:
             data = data.to(device)
             output = model(data)
-            loss = criterion(output, data)
+            loss, loss_dict = criterion(output, data)
             # Alternative loss calculation:
             # loss = nn.L1Loss()(output, data)
             test_loss += loss.item()
@@ -212,16 +210,16 @@ def evaluate(model, test_loader, criterion=None, device=None):
     print(f"Test Loss: {avg_test_loss:.4f}")
 
     # Visualize a few reconstructions
-    data, _ = next(iter(test_loader))
-    data = data[:5].to(device)  # Get first 5 samples
+    # data, _ = next(iter(test_loader))
+    # data = data[:5].to(device)  # Get first 5 samples
 
-    model.eval()
-    with torch.no_grad():
-        output = model(data)
-
-    # Convert back to CPU for plotting
-    data = data.cpu().numpy()
-    output = output.cpu().numpy()
+    # model.eval()
+    # with torch.no_grad():
+    #     output = model(data)
+    #
+    # # Convert back to CPU for plotting
+    # data = data.cpu().numpy()
+    # output = output.cpu().numpy()
 
     return avg_test_loss
 
@@ -240,7 +238,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
     parser.add_argument("--latent_dim", type=int, default=32, help="Dimension of latent space")
-    parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate")
+    parser.add_argument("--learning_rate", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("--test_split", type=float, default=0.1, help="Test set split ratio")
     # Commented out loss function choice
     # parser.add_argument("--loss", type=str, default="mse", choices=["mse", "l1"],
@@ -264,11 +262,19 @@ def main():
     print(f"Input dimension detected: {input_dim}")
 
     # Create the model
-    model = AE(input_dim=input_dim, latent_dim=args.latent_dim)
-    print(f"Created autoencoder with latent dimension: {args.latent_dim}")
+    model = VQVAE()
+    # print(f"Created autoencoder with latent dimension: {args.latent_dim}")
 
     # Set up criterion and optimizer
-    criterion = nn.MSELoss()
+    def criterion(output, target):
+        recon, vq_loss, perplexity = output
+        recon_loss = nn.MSELoss()(recon, target)
+        loss = recon_loss + vq_loss
+        return loss, {
+            "vq_loss": vq_loss,
+            "recon_loss": recon_loss,
+        }
+
     # Alternative loss function based on argument (commented out)
     # if args.loss == "l1":
     #     criterion = nn.L1Loss()
@@ -297,7 +303,7 @@ def main():
     )
 
     # Load the best model for evaluation
-    best_model = AE(input_dim=input_dim, latent_dim=args.latent_dim)
+    best_model = VQVAE()
     best_model.load_state_dict(torch.load("best_model.pth")["model"])
 
     # Evaluate on validation set
