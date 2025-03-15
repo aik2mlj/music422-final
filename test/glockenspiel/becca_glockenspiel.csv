@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 14:05:13 2025
+# Reference file: /user/l/lejun/tmp-sync/test/glockenspiel/glockenspiel.wav
+# Subject name/number: becca
+Test file                    ,          SDG, 
+glockenspiel_128kbps_bl.wav  ,        -0.40, 
+glockenspiel_128kbps_ours.wav,        -0.30, 
+glockenspiel_96kbps_bl.wav   ,        -0.40, 
+glockenspiel_96kbps_ours.wav ,        -0.30, 

@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 13:18:57 2025
+# Reference file: /user/l/lejun/tmp-sync/test/pannedCello/pannedCello.wav
+# Subject name/number: john
+Test file           ,          SDG, 
+pannedCello_128kbps_ours.wav,         0.00, 
+pannedCello_128kbps_bl.wav  ,        -0.20, 
+pannedCello_96kbps_ours.wav ,        -1.00, 
+pannedCello_96kbps_bl.wav   ,        -2.00, 

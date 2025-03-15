@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 16:45:56 2025
+# Reference file: /user/l/lejun/tmp-sync/test/harpsichord/harpsichord.wav
+# Subject name/number: Grant
+Test file                   ,          SDG, 
+harpsichord_128kbps_bl.wav  ,        -0.50, 
+harpsichord_128kbps_ours.wav,        -1.00, 
+harpsichord_96kbps_ours.wav ,        -2.50, 
+harpsichord_96kbps_bl.wav   ,        -2.70, 

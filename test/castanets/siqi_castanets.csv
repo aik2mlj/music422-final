@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 14:09:20 2025
+# Reference file: /Users/sc/Desktop/422Final/test/castanets/castanets.wav
+# Subject name/number: siqi
+Test file                 ,          SDG, 
+castanets_128kbps_bl.wav  ,        -2.00, 
+castanets_96kbps_bl.wav   ,        -4.00, 
+castanets_128kbps_ours.wav,        -3.00, 
+castanets_96kbps_ours.wav ,        -4.00, 

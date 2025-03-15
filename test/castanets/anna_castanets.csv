@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 13:41:23 2025
+# Reference file: /user/l/lejun/tmp-sync/test/castanets/castanets.wav
+# Subject name/number: anna
+Test file                 ,          SDG, 
+castanets_128kbps_bl.wav  ,        -0.70, 
+castanets_128kbps_ours.wav,        -1.50, 
+castanets_96kbps_bl.wav   ,        -2.50, 
+castanets_96kbps_ours.wav ,        -2.30, 

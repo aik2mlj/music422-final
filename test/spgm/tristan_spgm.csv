@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 14:59:27 2025
+# Reference file: /Users/sc/Desktop/422Final/test/spgm/spgm.wav
+# Subject name/number: tristan
+Test file            ,          SDG, 
+spgm_128kbps_ours.wav,        -0.10, 
+spgm_96kbps_ours.wav ,        -0.20, 
+spgm_96kbps_bl.wav   ,        -0.40, 
+spgm_128kbps_bl.wav  ,        -0.20, 

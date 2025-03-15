@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 14:07:28 2025
+# Reference file: /user/l/lejun/tmp-sync/test/harpsichord/harpsichord.wav
+# Subject name/number: becca
+Test file                   ,          SDG, 
+harpsichord_128kbps_bl.wav  ,        -0.10, 
+harpsichord_128kbps_ours.wav,        -0.20, 
+harpsichord_96kbps_ours.wav ,        -1.00, 
+harpsichord_96kbps_bl.wav   ,        -1.20, 

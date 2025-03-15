@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 13:38:30 2025
+# Reference file: /Users/sc/Desktop/422Final/test/pannedCello/pannedCello.wav
+# Subject name/number: Tiffany
+Test file           ,          SDG, 
+pannedCello_96kbps_ours.wav ,        -0.20, 
+pannedCello_128kbps_ours.wav,        -0.20, 
+pannedCello_96kbps_bl.wav   ,        -1.50, 
+pannedCello_128kbps_bl.wav  ,        -0.30, 

@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 14:10:50 2025
+# Reference file: /user/l/lejun/tmp-sync/test/spgm/spgm.wav
+# Subject name/number: becca
+Test file            ,          SDG, 
+spgm_96kbps_bl.wav   ,        -0.30, 
+spgm_128kbps_ours.wav,         0.00, 
+spgm_96kbps_ours.wav ,        -0.10, 
+spgm_128kbps_bl.wav  ,        -0.10, 

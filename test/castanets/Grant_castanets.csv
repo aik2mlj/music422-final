@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 16:39:00 2025
+# Reference file: /user/l/lejun/tmp-sync/test/castanets/castanets.wav
+# Subject name/number: Grant
+Test file                 ,          SDG, 
+castanets_96kbps_ours.wav ,        -2.00, 
+castanets_96kbps_bl.wav   ,        -2.00, 
+castanets_128kbps_ours.wav,        -1.20, 
+castanets_128kbps_bl.wav  ,        -1.00, 

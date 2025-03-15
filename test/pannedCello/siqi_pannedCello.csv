@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 14:06:05 2025
+# Reference file: /Users/sc/Desktop/422Final/test/pannedCello/pannedCello.wav
+# Subject name/number: siqi
+Test file           ,          SDG, 
+pannedCello_96kbps_bl.wav   ,        -2.50, 
+pannedCello_128kbps_ours.wav,        -0.20, 
+pannedCello_128kbps_bl.wav  ,        -0.30, 
+pannedCello_96kbps_ours.wav ,        -2.00, 

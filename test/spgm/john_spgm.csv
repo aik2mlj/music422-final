@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 13:22:30 2025
+# Reference file: /user/l/lejun/tmp-sync/test/spgm/spgm.wav
+# Subject name/number: john
+Test file            ,          SDG, 
+spgm_128kbps_bl.wav  ,        -0.40, 
+spgm_128kbps_ours.wav,         0.50, 
+spgm_96kbps_bl.wav   ,        -2.50, 
+spgm_96kbps_ours.wav ,        -1.00, 

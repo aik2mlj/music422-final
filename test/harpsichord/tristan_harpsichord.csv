@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 15:03:41 2025
+# Reference file: /Users/sc/Desktop/422Final/test/harpsichord/harpsichord.wav
+# Subject name/number: tristan
+Test file                   ,          SDG, 
+harpsichord_128kbps_ours.wav,        -0.10, 
+harpsichord_96kbps_ours.wav ,        -0.40, 
+harpsichord_128kbps_bl.wav  ,        -0.10, 
+harpsichord_96kbps_bl.wav   ,        -0.80, 

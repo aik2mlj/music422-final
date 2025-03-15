@@ -1,0 +1,9 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 13 13:50:19 2025
+# Reference file: /Users/sc/Desktop/422Final/test/spgm/spgm.wav
+# Subject name/number: siqi
+Test file            ,          SDG, 
+spgm_96kbps_ours.wav ,        -0.20, 
+spgm_128kbps_ours.wav,         0.00, 
+spgm_96kbps_bl.wav   ,        -2.00, 
+spgm_128kbps_bl.wav  ,        -1.00, 
