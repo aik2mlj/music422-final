@@ -511,9 +511,10 @@ def encode_decode(file, bitRate):
 
 
 def get_side_MDCTLines(data, codingParams):
-    from window import SineWindow
+    from window import SineWindow, HanningWindow
     from rotation import rotational_ms
     from mdct import MDCT
+    import scipy.fft
 
     # get MDCT lines
     halfN = codingParams.nMDCTLines
@@ -522,9 +523,15 @@ def get_side_MDCTLines(data, codingParams):
     mdctTimeSamples_R = SineWindow(data[1])
     mdctLines_R = MDCT(mdctTimeSamples_R, halfN, halfN)[:halfN]
 
+    # get FFT lines for angle calculation
+    fftTimeSamples_L = HanningWindow(data[0])
+    fftLines_L = scipy.fft.rfft(fftTimeSamples_L)[:halfN]
+    fftTimeSamples_R = HanningWindow(data[1])
+    fftLines_R = scipy.fft.rfft(fftTimeSamples_R)[:halfN]
+
     # calculate rotaional M/S
     psi_array, mdctLines_M, mdctLines_S = rotational_ms(
-        mdctLines_L, mdctLines_R, codingParams.sfBands
+        mdctLines_L, mdctLines_R, fftLines_L, fftLines_R, codingParams.sfBands
     )
     mdctLines_MS = [mdctLines_M, mdctLines_S]
     return mdctLines_MS

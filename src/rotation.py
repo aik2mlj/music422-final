@@ -114,9 +114,10 @@ def apply_inverse_rotation(
     return mdctLines_L, mdctLines_R
 
 
-def rotational_ms(mdctLines_L, mdctLines_R, sfBands, isVanilla=False):
+def rotational_ms(mdctLines_L, mdctLines_R, fftLines_L, fftLines_R, sfBands, isVanilla=False):
     """
     Split the MDCT lines into M and S components using rotational M/S.
+    Now use fftLines for rotation angles calculation.
     """
     # sanity check with vanilla M/S
     if isVanilla:
@@ -126,7 +127,7 @@ def rotational_ms(mdctLines_L, mdctLines_R, sfBands, isVanilla=False):
         )
         return psi_array_vanilla, mdctLines_M_vanilla, mdctLines_S_vanilla
 
-    psi_array = quantize_rotation(calc_rotation_angles(mdctLines_L, mdctLines_R, sfBands))
+    psi_array = quantize_rotation(calc_rotation_angles(fftLines_L, fftLines_R, sfBands))
     mdctLines_M, mdctLines_S = apply_rotation(mdctLines_L, mdctLines_R, psi_array, sfBands)
     return psi_array, mdctLines_M, mdctLines_S
 

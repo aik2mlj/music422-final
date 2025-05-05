@@ -9,10 +9,14 @@ codec.py -- The actual encode/decode functions for the perceptual audio codec
 import numpy as np  # used for arrays
 
 # used by Encode and Decode
-from window import SineWindow  # current window used for MDCT -- implement KB-derived?
+from window import (
+    HanningWindow,
+    SineWindow,
+)  # current window used for MDCT -- implement KB-derived?
 from mdct import MDCT, IMDCT  # fast MDCT implementation (uses numpy FFT)
 from quantize import *  # using vectorized versions (to use normal versions, uncomment lines 18,67 below defining vMantissa and vDequantize)
 from rotation import rotational_ms, inverse_rotational_ms, apply_rotation
+import scipy.fft  # used for FFTs in the side chain
 
 # used only by Encode
 from psychoac import CalcSMRs, CalcSMRs_MS  # calculates SMRs for each scale factor band
@@ -110,8 +114,16 @@ def Encode(data, codingParams):
     mdctTimeSamples_R = SineWindow(data[1])
     mdctLines_R = MDCT(mdctTimeSamples_R, halfN, halfN)[:halfN]
 
+    # get FFT lines for angle calculation
+    fftTimeSamples_L = HanningWindow(data[0])
+    fftLines_L = scipy.fft.rfft(fftTimeSamples_L)[:halfN]
+    fftTimeSamples_R = HanningWindow(data[1])
+    fftLines_R = scipy.fft.rfft(fftTimeSamples_R)[:halfN]
+
     # calculate rotaional M/S
-    psi_array, mdctLines_M, mdctLines_S = rotational_ms(mdctLines_L, mdctLines_R, sfBands)
+    psi_array, mdctLines_M, mdctLines_S = rotational_ms(
+        mdctLines_L, mdctLines_R, fftLines_L, fftLines_R, sfBands
+    )
     mdctLines_MS = [mdctLines_M, mdctLines_S]
 
     # compute overall scale factor for M/S block and boost mdctLines using it
