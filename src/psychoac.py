@@ -96,9 +96,9 @@ class Masker:
         self.isTonal = isTonal
         self.delta = 16 if isTonal else 6
 
-        # if the masker is a side tone, apply BMLD correction
-        if isSide:
-            self.delta += BMLD_correction(f)
+        # if isSide:
+        # apply BMLD correction to both M and S channels
+        self.delta += BMLD_correction(f)
 
     def IntensityAtFreq(self, freq):
         """The intensity at frequency freq"""
