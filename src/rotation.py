@@ -6,11 +6,11 @@ import numpy as np
 from quantize import vQuantizeUniform, vDequantizeUniform
 
 
-def calc_rotation_angles(mdctLines_L, mdctLines_R, sfBands):
+def calc_rotation_angles(fftLines_L, fftLines_R, sfBands):
     """
     Calculate the rotation angles for each frequency subband for the given MDCT lines.
     """
-    # for each pair of subbands from mdctLines_L and mdctLines_R, calculate the covariance matrix
+    # for each pair of subbands from fftLines_L and fftLines_R, calculate the covariance matrix
     # and store it in a list
     cov_matrices = []
 
@@ -19,11 +19,11 @@ def calc_rotation_angles(mdctLines_L, mdctLines_R, sfBands):
         lowLine = sfBands.lowerLine[iBand]
         highLine = sfBands.upperLine[iBand] + 1
         nLines = sfBands.nLines[iBand]
-        # get the MDCT lines for the current subband
-        mdctLines_L_subband = mdctLines_L[lowLine:highLine]
-        mdctLines_R_subband = mdctLines_R[lowLine:highLine]
+        # get the absolute value of fftLines for the current subband
+        subband_L = np.abs(fftLines_L[lowLine:highLine])
+        subband_R = np.abs(fftLines_R[lowLine:highLine])
         # calculate the covariance matrix
-        cov_matrix = np.cov(np.vstack((mdctLines_L_subband, mdctLines_R_subband)))
+        cov_matrix = np.cov(np.vstack((subband_L, subband_R)))
         cov_matrices.append(cov_matrix)
         # calculate the rotation angle, use arctan2 to avoid division by zero
         rotation_angle = 0.5 * np.arctan2(
