@@ -35,7 +35,7 @@ def calc_rotation_angles(fftLines_L, fftLines_R, sfBands):
     return rotation_angles
 
 
-def quantize_rotation(rotation_angles, nPsiBits=4):
+def quantize_rotation(rotation_angles, nPsiBits=6):
     """
     Uniformly quantize the rotation angles using nPsiBits-bit precision.
     """
@@ -46,7 +46,7 @@ def quantize_rotation(rotation_angles, nPsiBits=4):
     return vQuantizeUniform(rotation_angles, nPsiBits)
 
 
-def apply_rotation(mdctLines_L, mdctLines_R, quantized_rotation_angles, sfBands, nPsiBits=4):
+def apply_rotation(mdctLines_L, mdctLines_R, quantized_rotation_angles, sfBands, nPsiBits=6):
     """
     Apply the rotation to the MDCT lines.
     Return mdctLines_M and mdctLines_S.
@@ -80,7 +80,7 @@ def apply_rotation(mdctLines_L, mdctLines_R, quantized_rotation_angles, sfBands,
 
 
 def apply_inverse_rotation(
-    mdctLines_M, mdctLines_S, quantized_rotation_angles, sfBands, nPsiBits=4
+    mdctLines_M, mdctLines_S, quantized_rotation_angles, sfBands, nPsiBits=6
 ):
     """
     Apply the inverse rotation to the MDCT lines.
@@ -121,7 +121,7 @@ def rotational_ms(mdctLines_L, mdctLines_R, fftLines_L, fftLines_R, sfBands, isV
     """
     # sanity check with vanilla M/S
     if isVanilla:
-        psi_array_vanilla = quantize_rotation(np.full(sfBands.nBands, np.pi / 4), nPsiBits=4)
+        psi_array_vanilla = quantize_rotation(np.full(sfBands.nBands, np.pi / 4), nPsiBits=6)
         mdctLines_M_vanilla, mdctLines_S_vanilla = apply_rotation(
             mdctLines_L, mdctLines_R, psi_array_vanilla, sfBands
         )

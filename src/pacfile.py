@@ -482,7 +482,7 @@ def encode_decode(file, bitRate):
 
             # M/S coding
             codingParams.useML = False
-            codingParams.nPsiBits = 4
+            codingParams.nPsiBits = 6
         else:  # "Decode"
             # set PCM parameters (the rest is same as set by PAC file on open)
             codingParams.bitsPerSample = 16
@@ -558,7 +558,7 @@ def extract_side_MDCTLines_from_wav(file):
 
     # M/S coding
     codingParams.useML = False
-    codingParams.nPsiBits = 4
+    codingParams.nPsiBits = 6
 
     sfBands = ScaleFactorBands(
         AssignMDCTLinesFromFreqLimits(codingParams.nMDCTLines, codingParams.sampleRate)
